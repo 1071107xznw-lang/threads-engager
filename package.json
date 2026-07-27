@@ -6,7 +6,10 @@
   "scripts": {
     "test": "node --test",
     "setup": "npm install && npx playwright install chromium",
-    "dashboard": "node src/server.mjs"
+    "dashboard": "node src/server.mjs",
+    "verify": "node src/verify_token.mjs",
+    "publish": "node src/publish_cli.mjs",
+    "refresh-token": "node src/refresh_cli.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

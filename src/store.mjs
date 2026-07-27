@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS drafts (
   draftText TEXT,
   editedText TEXT,
   updatedAt TEXT
+);
+CREATE TABLE IF NOT EXISTS auth_token (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  accessToken TEXT NOT NULL,
+  expiresAt TEXT,
+  updatedAt TEXT NOT NULL
 );`;
 
 export function createStore(dbPath) {
@@ -84,6 +90,22 @@ export function createStore(dbPath) {
         WHERE account=? AND status='sent' AND sentAt >= ?
       `).all(account, sinceIso);
       return new Set(rows.map((r) => r.author));
+    },
+    // ── Threads 長期 token 持久化（單一帳號，固定 id=1）──
+    getToken() {
+      return db
+        .prepare('SELECT accessToken, expiresAt, updatedAt FROM auth_token WHERE id=1')
+        .get() || null;
+    },
+    setToken(accessToken, expiresAt = null, updatedAt = new Date().toISOString()) {
+      db.prepare(`
+        INSERT INTO auth_token (id, accessToken, expiresAt, updatedAt)
+        VALUES (1, @accessToken, @expiresAt, @updatedAt)
+        ON CONFLICT(id) DO UPDATE SET
+          accessToken=excluded.accessToken,
+          expiresAt=excluded.expiresAt,
+          updatedAt=excluded.updatedAt
+      `).run({ accessToken, expiresAt, updatedAt });
     },
     close() { db.close(); },
   };
