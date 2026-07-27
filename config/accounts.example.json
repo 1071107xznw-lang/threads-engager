@@ -1,0 +1,12 @@
+[
+  {
+    "name": "brand_main",
+    "profilePath": "./profiles/brand_main",
+    "tags": ["#音樂製作", "#編曲"],
+    "persona": "你是一個熱愛電子音樂製作的創作者，語氣親切、專業、不推銷。回覆要針對貼文內容，加入有價值的觀點或鼓勵，限 80 字內，自然口語，不要 hashtag、不要連結。",
+    "filters": { "recencyHours": 336, "minLikes": 0 },
+    "relevanceThreshold": 0.6,
+    "dailyCap": 12,
+    "enabled": true
+  }
+]
