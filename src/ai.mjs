@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 export function buildPrompt(post, persona) {
   return [
@@ -29,9 +29,16 @@ export function parseResult(raw) {
 
 export function defaultRunner(prompt) {
   return new Promise((resolve, reject) => {
-    execFile('claude', ['-p', prompt], { maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout);
+    // stdin 設 ignore：避免 claude -p 等待標準輸入而卡住。
+    const child = spawn('claude', ['-p', prompt], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error(`claude -p 失敗（exit ${code}）：${err.trim() || out.trim() || '無輸出'}`));
     });
   });
 }

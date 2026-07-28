@@ -27,6 +27,23 @@ CREATE TABLE IF NOT EXISTS auth_token (
   accessToken TEXT NOT NULL,
   expiresAt TEXT,
   updatedAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS native_drafts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  draftText TEXT NOT NULL,
+  editedText TEXT,
+  angle TEXT,
+  sourceSummary TEXT,
+  status TEXT NOT NULL DEFAULT 'drafted',
+  createdAt TEXT NOT NULL,
+  publishedAt TEXT,
+  publishedPostId TEXT,
+  error TEXT
+);
+CREATE TABLE IF NOT EXISTS search_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  q TEXT NOT NULL,
+  calledAt TEXT NOT NULL
 );`;
 
 export function createStore(dbPath) {
@@ -107,6 +124,47 @@ export function createStore(dbPath) {
           updatedAt=excluded.updatedAt
       `).run({ accessToken, expiresAt, updatedAt });
     },
+
+    // ── 原生貼文草稿佇列 ──
+    insertNativeDraft({ draftText, angle = null, sourceSummary = null }) {
+      const info = db.prepare(`
+        INSERT INTO native_drafts (draftText, angle, sourceSummary, createdAt)
+        VALUES (?, ?, ?, ?)
+      `).run(draftText, angle, sourceSummary, new Date().toISOString());
+      return info.lastInsertRowid;
+    },
+    listNativeByStatus(status) {
+      return db.prepare(
+        'SELECT * FROM native_drafts WHERE status=? ORDER BY createdAt DESC, id DESC'
+      ).all(status);
+    },
+    getNativeDraft(id) {
+      return db.prepare('SELECT * FROM native_drafts WHERE id=?').get(id) || null;
+    },
+    editNativeDraft(id, editedText) {
+      db.prepare('UPDATE native_drafts SET editedText=? WHERE id=?').run(editedText, id);
+    },
+    setNativeStatus(id, status) {
+      db.prepare('UPDATE native_drafts SET status=? WHERE id=?').run(status, id);
+    },
+    markNativePublished(id, postId, nowIso = new Date().toISOString()) {
+      db.prepare(
+        "UPDATE native_drafts SET status='published', publishedPostId=?, publishedAt=?, error=NULL WHERE id=?"
+      ).run(postId, nowIso, id);
+    },
+    markNativeFailed(id, error) {
+      db.prepare('UPDATE native_drafts SET error=? WHERE id=?').run(String(error), id);
+    },
+
+    // ── keyword_search 額度紀錄（滾動 7 天）──
+    logSearch(q, calledAt = new Date().toISOString()) {
+      db.prepare('INSERT INTO search_log (q, calledAt) VALUES (?, ?)').run(q, calledAt);
+    },
+    countSearches7d(nowIso = new Date().toISOString()) {
+      const since = new Date(Date.parse(nowIso) - 7 * 24 * 3600 * 1000).toISOString();
+      return db.prepare('SELECT COUNT(*) AS n FROM search_log WHERE calledAt >= ?').get(since).n;
+    },
+
     close() { db.close(); },
   };
 }

@@ -3,31 +3,70 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Threads Engager</title>
+  <title>Argo 內容中心</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #1c1c1e; }
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #1c1c1e; background: #fff; }
+    html { background: #fff; }
     header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    select, button { font-size: 15px; padding: 6px 12px; border-radius: 8px; border: 1px solid #ccc; cursor: pointer; }
+    h2 { margin: 0; }
+    select, button { font-size: 15px; padding: 6px 12px; border-radius: 8px; border: 1px solid #ccc; cursor: pointer; background: #fff; }
     button.primary { background: #1c1c1e; color: #fff; border-color: #1c1c1e; }
+    button.danger { background: #b3261e; color: #fff; border-color: #b3261e; }
+    .tabs { display: flex; gap: 8px; margin: 16px 0; border-bottom: 1px solid #e0e0e0; }
+    .tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 12px; background: none; color: #666; }
+    .tab.active { color: #1c1c1e; border-bottom-color: #1c1c1e; font-weight: 600; }
+    section { display: none; }
+    section.active { display: block; }
+    .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin: 16px 0; }
     .meta { font-size: 13px; color: #666; margin-bottom: 8px; }
     .meta a { color: #0a66c2; }
-    .score { float: right; font-weight: 600; }
+    .angle { font-weight: 600; color: #1c1c1e; }
     .content { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 8px; font-size: 14px; }
-    textarea { width: 100%; min-height: 70px; margin-top: 10px; font-size: 15px; padding: 8px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+    textarea { width: 100%; min-height: 90px; margin-top: 10px; font-size: 15px; padding: 8px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+    .count { font-size: 12px; color: #999; text-align: right; }
     .actions { margin-top: 10px; display: flex; gap: 8px; }
-    #status { color: #666; font-size: 14px; margin-left: auto; }
+    .status { color: #666; font-size: 14px; }
+    #dryrun { font-size: 12px; padding: 3px 8px; border-radius: 999px; }
+    #dryrun.on { background: #fff3cd; color: #7a5b00; border: 1px solid #ffe28a; }
+    #dryrun.off { background: #fde8e6; color: #8a1c16; border: 1px solid #f6b8b2; }
+    h3 { margin: 24px 0 4px; }
   </style>
 </head>
 <body>
   <header>
-    <h2 style="margin:0">Threads Engager</h2>
-    <select id="account"></select>
-    <button id="scrape">開始抓取</button>
-    <button id="send" class="primary">送出已核准</button>
-    <span id="status"></span>
+    <h2>Argo 內容中心</h2>
+    <span id="dryrun"></span>
   </header>
-  <div id="queue"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="native">原生貼文</button>
+    <button class="tab" data-tab="reply">回覆審核</button>
+  </div>
+
+  <!-- 原生貼文：產稿 → 審核 → 發布 -->
+  <section id="native" class="active">
+    <div class="bar">
+      <button id="gen" class="primary">產生草稿</button>
+      <span id="nstatus" class="status"></span>
+    </div>
+    <h3>待審核</h3>
+    <div id="ndrafted"></div>
+    <h3>已核准（待發布）</h3>
+    <div id="napproved"></div>
+  </section>
+
+  <!-- 回覆審核：既有流程 -->
+  <section id="reply">
+    <div class="bar">
+      <select id="account"></select>
+      <button id="scrape">開始抓取</button>
+      <button id="send" class="primary">送出已核准</button>
+      <span id="rstatus" class="status"></span>
+    </div>
+    <div id="queue"></div>
+  </section>
+
   <script src="/app.js"></script>
 </body>
 </html>

@@ -46,3 +46,27 @@ test('recentAuthors 回傳窗口內已回覆作者', () => {
   assert.ok(authors.has('bob'));
   s.close();
 });
+
+test('native_drafts 狀態機: 建立→編輯→核准→發布', () => {
+  const s = createStore(':memory:');
+  const id = s.insertNativeDraft({ draftText: '稿', angle: 'x', sourceSummary: 's' });
+  assert.equal(s.listNativeByStatus('drafted').length, 1);
+  s.editNativeDraft(id, '改稿');
+  s.setNativeStatus(id, 'approved');
+  assert.equal(s.listNativeByStatus('drafted').length, 0);
+  assert.equal(s.listNativeByStatus('approved')[0].editedText, '改稿');
+  s.markNativePublished(id, 'post123');
+  const pub = s.getNativeDraft(id);
+  assert.equal(pub.status, 'published');
+  assert.equal(pub.publishedPostId, 'post123');
+  s.close();
+});
+
+test('search_log 只算 7 天窗內', () => {
+  const s = createStore(':memory:');
+  const now = Date.now();
+  s.logSearch('a', new Date(now - 1000).toISOString());
+  s.logSearch('b', new Date(now - 8 * 24 * 3600 * 1000).toISOString());
+  assert.equal(s.countSearches7d(new Date(now).toISOString()), 1);
+  s.close();
+});

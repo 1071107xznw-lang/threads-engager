@@ -74,6 +74,18 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'GET', `${graph}/${userId}/threads?${q}`);
     },
 
+    // 站內關鍵字搜尋（供「趨勢素材」用，非用於回覆別人）。
+    async keywordSearch({
+      accessToken,
+      q,
+      searchType = 'TOP',
+      limit = 10,
+      fields = 'id,text,permalink,username,timestamp',
+    }) {
+      const query = buildQuery(authed(accessToken, { q, search_type: searchType, fields, limit }));
+      return request(fetchImpl, 'GET', `${graph}/keyword_search?${query}`);
+    },
+
     // ── 發文（兩步：建立容器 → 發布）───────────────────────────
     async createTextContainer({ accessToken, userId, text }) {
       const body = buildQuery(authed(accessToken, { media_type: 'TEXT', text }));
