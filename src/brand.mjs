@@ -16,6 +16,15 @@ export const DEFAULT_BRAND = {
   newsFeeds: [],
   // 全網即時熱搜（Google Trends RSS 等）：搜尋量飆高的時勢主題，不限酒吧相關
   hotTrendsFeeds: [],
+  // 回覆別人貼文（Phase 3）——產草稿用；送出一律人工核准
+  replyPersona:
+    '你代表台北餐酒吧 Argo，路過別人的公開貼文留一則回覆。語氣友善、貼題、有梗或有共鳴、' +
+    '像真人隨口留言，繁體中文、≤120 字，不推銷、不放連結、不用 hashtag、不要硬提自己的店。',
+  replyThreshold: 0.6, // AI 相關性分數門檻，未過不產草稿
+  replyDailyCap: 8, // 每日送出回覆上限
+  replyPerRun: 15, // 每次搜尋最多對幾則新候選產草稿
+  // 回覆專用的聚焦 tag（比原生貼文趨勢的 tags 精簡，避免搜太發散＋省額度）
+  replyTags: ['調酒', '台北酒吧', '餐酒館', '微醺'],
 };
 
 // 官方硬上限：滾動 7 天內 keyword_search 查詢數不得超過此值（CLAUDE.md 規則 6）。

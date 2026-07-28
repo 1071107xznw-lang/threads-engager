@@ -10,6 +10,11 @@
     "下班喝一杯", "紓壓", "週末去哪"
   ],
   "useThreadsSearch": false,
+  "replyPersona": "你代表台北餐酒吧 Argo，路過別人的公開貼文留一則回覆。語氣友善、貼題、有梗或有共鳴、像真人隨口留言，繁體中文、≤120 字，不推銷、不放連結、不用 hashtag、不要硬提自己的店。",
+  "replyThreshold": 0.6,
+  "replyDailyCap": 8,
+  "replyPerRun": 15,
+  "replyTags": ["調酒", "台北酒吧", "餐酒館", "微醺", "大安區美食"],
   "draftsPerRun": 3,
   "perTagPosts": 8,
   "searchCap7d": 400,

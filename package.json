@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "setup": "npm install && npx playwright install chromium",
+    "setup": "npm install",
     "dashboard": "node src/server.mjs",
     "verify": "node src/verify_token.mjs",
     "publish": "node src/publish_cli.mjs",
@@ -15,8 +15,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
-    "express": "^4.19.0",
-    "playwright": "^1.45.0"
+    "express": "^4.19.0"
   },
   "devDependencies": {
     "supertest": "^7.0.0"

@@ -1,17 +1,15 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { loadConfig } from './config.mjs';
 import { createStore } from './store.mjs';
-import { scrapeAccount } from './scraper.mjs';
-import { sendReplies } from './sender.mjs';
-import { scoreAndDraft } from './ai.mjs';
 import { loadEnvFile, loadSettings } from './env.mjs';
 import { loadBrand } from './brand.mjs';
 import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
 import { publishText } from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
+import { findAndDraft } from './reply_pipeline.mjs';
+import { sendApprovedReplies } from './threads_reply.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -103,36 +101,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const api = createApi({ appSecret: settings.appSecret, base: settings.apiBase });
   const { accessToken } = getActiveToken({ store, settings });
 
-  // 舊的多帳號 config 可能不存在（重構中）；缺檔就空陣列，dashboard 照開。
-  let accounts = [];
-  try {
-    accounts = loadConfig(join(__dirname, '..', 'config', 'accounts.json'));
-  } catch {
-    console.warn('（無 config/accounts.json，回覆審核佇列停用，原生貼文功能不受影響）');
-  }
-  const byName = (name) => accounts.find((a) => a.name === name);
+  // 單一品牌帳號（不再需要多帳號 accounts.json）。
+  const ACCOUNT = 'argo';
+  const accounts = [{ name: ACCOUNT }];
 
-  const runScrape = async (name) => {
-    const account = byName(name);
-    if (!account) throw new Error('帳號不存在');
-    const result = await scrapeAccount(account, { store });
-    for (const row of store.listByStatus(name, 'new')) {
-      const r = await scoreAndDraft({
-        post: { author: row.author, content: row.content, likes: row.likes },
-        persona: account.persona,
-        threshold: account.relevanceThreshold,
-      });
-      store.setRelevance(row.id, r.score);
-      if (r.draft) store.saveDraft(row.id, r.draft);
-      else store.setStatus(row.id, 'skipped');
-    }
-    return result;
-  };
-  const runSend = async (name) => {
-    const account = byName(name);
-    if (!account) throw new Error('帳號不存在');
-    return sendReplies(account, { store });
-  };
+  // 搜候選串→評分→產回覆草稿（全自動只到草稿）
+  const runScrape = () => findAndDraft({ settings, brand, store, accessToken, api, account: ACCOUNT });
+  // 送出「已核准」的回覆（唯一對外送出點，只送 approved）
+  const runSend = () =>
+    sendApprovedReplies({ settings, store, accessToken, api, account: ACCOUNT, dailyCap: brand.replyDailyCap });
 
   const runGenerate = () => runGeneration({ settings, brand, store, accessToken, api });
   const publishDraft = makePublishDraft({

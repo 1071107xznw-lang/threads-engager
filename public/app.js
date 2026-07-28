@@ -153,16 +153,26 @@ $('#queue').addEventListener('click', async (e) => {
 });
 
 $('#scrape').addEventListener('click', async () => {
-  $('#rstatus').textContent = '抓取中…';
-  const r = await api('/api/scrape', { method: 'POST', body: JSON.stringify({ account: $('#account').value }) });
-  $('#rstatus').textContent = r.error ? ('失敗：' + r.error) : `抓到 ${r.found}、保留 ${r.kept}、新增 ${r.inserted}`;
-  await loadQueue();
+  $('#scrape').disabled = true;
+  $('#rstatus').textContent = '搜尋候選串中…（官方 API＋AI 產稿，可能數十秒）';
+  try {
+    const r = await api('/api/scrape', { method: 'POST', body: JSON.stringify({ account: $('#account').value }) });
+    $('#rstatus').textContent = r.error
+      ? ('失敗：' + r.error)
+      : `候選 ${r.candidates}、新增 ${r.inserted}、產草稿 ${r.drafted}、略過 ${r.skipped}`;
+    await loadQueue();
+  } finally {
+    $('#scrape').disabled = false;
+  }
 });
 
 $('#send').addEventListener('click', async () => {
-  $('#rstatus').textContent = '送出中…';
+  if (!confirm('確定要送出所有「已核准」的回覆？（正式模式會真的公開送出）')) return;
+  $('#rstatus').textContent = '送出已核准中…';
   const r = await api('/api/send', { method: 'POST', body: JSON.stringify({ account: $('#account').value }) });
-  $('#rstatus').textContent = r.error ? ('失敗：' + r.error) : `送出 ${r.sent}、略過 ${r.skipped}、失敗 ${r.failed}`;
+  if (r.error) { $('#rstatus').textContent = '失敗：' + r.error; return; }
+  $('#rstatus').textContent = (r.dryRun ? '🧪 DRY_RUN ' : '') + `送出 ${r.sent}、略過 ${r.skipped}、失敗 ${r.failed}`;
+  await loadQueue();
 });
 
 $('#account').addEventListener('change', loadQueue);

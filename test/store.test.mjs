@@ -62,6 +62,14 @@ test('native_drafts 狀態機: 建立→編輯→核准→發布', () => {
   s.close();
 });
 
+test('upsertPost 存 targetId（reply_to_id 用）', () => {
+  const s = createStore(':memory:');
+  const { id } = s.upsertPost({ account: 'argo', threadUrl: 'u1', author: 'x', content: 'c', targetId: 'M99' });
+  const row = s.listByStatus('argo', 'new').find((r) => r.id === id);
+  assert.equal(row.targetId, 'M99');
+  s.close();
+});
+
 test('search_log 只算 7 天窗內', () => {
   const s = createStore(':memory:');
   const now = Date.now();

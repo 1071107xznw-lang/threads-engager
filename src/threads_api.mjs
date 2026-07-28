@@ -97,6 +97,12 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'POST', `${graph}/${userId}/threads_publish`, body);
     },
 
+    // 建立「回覆別人貼文」的容器：帶 reply_to_id（對方貼文 id）。發布仍走 publishContainer。
+    async createReplyContainer({ accessToken, userId, text, replyToId }) {
+      const body = buildQuery(authed(accessToken, { media_type: 'TEXT', text, reply_to_id: replyToId }));
+      return request(fetchImpl, 'POST', `${graph}/${userId}/threads`, body);
+    },
+
     // ── Token 端點（不帶版本；用 client_secret / 長期 token 自身認證）──
     async exchangeLongLivedToken({ shortLivedToken, appSecret: secret = appSecret }) {
       const q = buildQuery({

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS posts (
   content TEXT,
   likes INTEGER DEFAULT 0,
   postedAt TEXT,
+  targetId TEXT,
   relevanceScore REAL,
   status TEXT NOT NULL DEFAULT 'new',
   discoveredAt TEXT NOT NULL,
@@ -50,6 +51,8 @@ export function createStore(dbPath) {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA);
+  // 既有 DB 相容：posts.targetId 若不存在則補上（reply_to_id 用）
+  try { db.exec('ALTER TABLE posts ADD COLUMN targetId TEXT'); } catch { /* 已存在 */ }
 
   return {
     upsertPost(p) {
@@ -58,9 +61,13 @@ export function createStore(dbPath) {
       ).get(p.account, p.threadUrl);
       if (existing) return { id: existing.id, inserted: false };
       const info = db.prepare(`
-        INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, discoveredAt)
-        VALUES (@account, @threadUrl, @author, @content, @likes, @postedAt, @discoveredAt)
-      `).run({ ...p, discoveredAt: new Date().toISOString() });
+        INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, targetId, discoveredAt)
+        VALUES (@account, @threadUrl, @author, @content, @likes, @postedAt, @targetId, @discoveredAt)
+      `).run({
+        author: null, content: null, likes: 0, postedAt: null, targetId: null,
+        ...p,
+        discoveredAt: new Date().toISOString(),
+      });
       return { id: info.lastInsertRowid, inserted: true };
     },
     setRelevance(id, score) {
