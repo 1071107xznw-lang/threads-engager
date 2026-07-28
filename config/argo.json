@@ -13,6 +13,9 @@
   "draftsPerRun": 3,
   "perTagPosts": 8,
   "searchCap7d": 400,
+  "hotTrendsFeeds": [
+    "https://trends.google.com/trending/rss?geo=TW"
+  ],
   "newsFeeds": [
     "https://news.google.com/rss/search?q=%E8%AA%BF%E9%85%92%20OR%20%E9%85%92%E5%90%A7%20OR%20%E5%BE%AE%E9%86%BA&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     "https://news.google.com/rss/search?q=%E8%8B%B1%E9%9B%84%E8%81%AF%E7%9B%9F%20OR%20T1%20OR%20%E9%9B%BB%E7%AB%B6&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",

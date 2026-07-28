@@ -14,6 +14,8 @@ export const DEFAULT_BRAND = {
   perTagPosts: 8,
   searchCap7d: 400,
   newsFeeds: [],
+  // 全網即時熱搜（Google Trends RSS 等）：搜尋量飆高的時勢主題，不限酒吧相關
+  hotTrendsFeeds: [],
 };
 
 // 官方硬上限：滾動 7 天內 keyword_search 查詢數不得超過此值（CLAUDE.md 規則 6）。

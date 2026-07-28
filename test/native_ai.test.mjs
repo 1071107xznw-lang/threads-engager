@@ -2,19 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildNativePrompt, parseDrafts, generateDrafts } from '../src/native_ai.mjs';
 
-test('buildNativePrompt 含 persona/新聞/站內/自己貼文', () => {
+test('buildNativePrompt 含 persona/熱搜/新聞/站內/自己貼文', () => {
   const p = buildNativePrompt({
     persona: 'ARGO人設',
+    hotTrends: [{ topic: '大樂透', traffic: '10000+', context: '頭獎9億' }],
     newsTitles: ['新聞A'],
     tagPosts: [{ text: '站內貼文X' }],
     ownPosts: ['自己Y'],
     n: 3,
   });
   assert.match(p, /ARGO人設/);
+  assert.match(p, /即時熱搜/);
+  assert.match(p, /大樂透（流量 10000\+）：頭獎9億/);
+  assert.match(p, /政治、災難/);
   assert.match(p, /新聞A/);
   assert.match(p, /站內貼文X/);
   assert.match(p, /自己Y/);
   assert.match(p, /JSON 陣列/);
+});
+
+test('無熱搜素材時不出現熱搜段落', () => {
+  const p = buildNativePrompt({ persona: 'x', newsTitles: [], tagPosts: [], ownPosts: [], n: 1 });
+  assert.doesNotMatch(p, /即時熱搜/);
 });
 
 test('parseDrafts 解析並擋超長/缺欄位', () => {

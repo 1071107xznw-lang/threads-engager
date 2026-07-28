@@ -1,6 +1,6 @@
 import { createApi } from './threads_api.mjs';
 import { gatherTagPosts } from './threads_search.mjs';
-import { fetchNewsTitles } from './trends.mjs';
+import { fetchNewsTitles, fetchTrendingTopics } from './trends.mjs';
 import { generateDrafts } from './native_ai.mjs';
 
 // 完整生產線：站內趨勢 + 網路趨勢 + 自己貼文 → AI 產稿 → 寫入 native_drafts（status=drafted）。
@@ -39,11 +39,15 @@ export async function runGeneration({
     log('站內搜尋已關閉（App 需 Live 模式才能取得他人公開貼文；見 config/argo.json useThreadsSearch）');
   }
 
-  // 2) 網路趨勢（失敗容忍）
+  // 2) 全網即時熱搜（Google Trends：搜尋量正在飆高的時勢主題，不限酒吧相關）
+  const hotTrends = await fetchTrendingTopics({ fetchImpl, feeds: brand.hotTrendsFeeds, log });
+  log(`即時熱搜：${hotTrends.length} 個主題${hotTrends[0] ? `（如「${hotTrends[0].topic}」${hotTrends[0].traffic || ''}）` : ''}`);
+
+  // 3) 網路趨勢（主題式新聞，失敗容忍）
   const newsTitles = await fetchNewsTitles({ fetchImpl, feeds: brand.newsFeeds, log });
   log(`網路趨勢：${newsTitles.length} 則新聞標題`);
 
-  // 3) 自己近期貼文（語氣樣本、避免重複）
+  // 4) 自己近期貼文（語氣樣本、避免重複）
   let ownPosts = [];
   try {
     const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 5 });
@@ -52,13 +56,13 @@ export async function runGeneration({
     log(`⚠️ 讀取自己貼文失敗（略過）：${e.message}`);
   }
 
-  // 4) AI 產稿
+  // 5) AI 產稿
   const drafts = await generateDrafts({
-    persona: brand.persona, newsTitles, tagPosts, ownPosts, n: brand.draftsPerRun, runner,
+    persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts, n: brand.draftsPerRun, runner,
   });
 
-  // 5) 寫入審核佇列
-  const sourceSummary = `站內 ${tagPosts.length} 則、新聞 ${newsTitles.length} 則`;
+  // 6) 寫入審核佇列
+  const sourceSummary = `熱搜 ${hotTrends.length}、新聞 ${newsTitles.length}、站內 ${tagPosts.length}`;
   const ids = drafts.map((d) =>
     store.insertNativeDraft({ draftText: d.text, angle: d.angle, sourceSummary })
   );
@@ -66,6 +70,7 @@ export async function runGeneration({
   return {
     generated: ids.length,
     ids,
+    hotTrends: hotTrends.length,
     tagPosts: tagPosts.length,
     newsTitles: newsTitles.length,
     quotaUsed7d: store.countSearches7d(nowIso),

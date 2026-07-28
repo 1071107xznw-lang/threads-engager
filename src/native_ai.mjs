@@ -1,13 +1,22 @@
 import { defaultRunner } from './ai.mjs';
 
 // 依品牌人設 + 趨勢素材，組出「產生原生貼文草稿」的繁中 prompt。
-export function buildNativePrompt({ persona, newsTitles = [], tagPosts = [], ownPosts = [], n = 3 }) {
+export function buildNativePrompt({ persona, hotTrends = [], newsTitles = [], tagPosts = [], ownPosts = [], n = 3 }) {
   const lines = [];
   lines.push(`人設：${persona}`);
   lines.push('');
   lines.push(`請以上述品牌口吻，產生 ${n} 則適合發在 Threads 的原生貼文草稿。`);
   lines.push('可參考以下素材找靈感，但**不得照抄任何一句原文**：');
   lines.push('');
+  if (hotTrends.length) {
+    lines.push('【全網即時熱搜（現在搜尋量飆高的時勢主題，蹭得上就蹭）】');
+    hotTrends.slice(0, 12).forEach((t, i) => {
+      const traffic = t.traffic ? `（流量 ${t.traffic}）` : '';
+      const ctx = t.context ? `：${String(t.context).slice(0, 60)}` : '';
+      lines.push(`${i + 1}. ${t.topic}${traffic}${ctx}`);
+    });
+    lines.push('');
+  }
   if (newsTitles.length) {
     lines.push('【近期新聞／話題】');
     newsTitles.slice(0, 12).forEach((t, i) => lines.push(`${i + 1}. ${t}`));
@@ -26,6 +35,8 @@ export function buildNativePrompt({ persona, newsTitles = [], tagPosts = [], own
   lines.push('規則：');
   lines.push('- 每則繁體中文、≤480 字、自然口語、有價值或有畫面感。');
   lines.push('- 不硬推銷、不誇大、不鼓勵過量飲酒、避免爭議話題。');
+  lines.push('- 蹭熱搜要自然：只挑能跟店（喝酒聚會、觀賽、活動、美食）合理連結的主題；');
+  lines.push('  政治、災難、意外、悲劇、八卦爭議一律跳過，寧可不蹭。');
   lines.push('- hashtag 最多 1 個，可不用。');
   lines.push('- 每則切入角度不同（angle 用一句話說明這則的切入點）。');
   lines.push('');
@@ -53,13 +64,14 @@ export function parseDrafts(raw, { maxLen = 500 } = {}) {
 
 export async function generateDrafts({
   persona,
+  hotTrends,
   newsTitles,
   tagPosts,
   ownPosts,
   n = 3,
   runner = defaultRunner,
 }) {
-  const prompt = buildNativePrompt({ persona, newsTitles, tagPosts, ownPosts, n });
+  const prompt = buildNativePrompt({ persona, hotTrends, newsTitles, tagPosts, ownPosts, n });
   const raw = await runner(prompt);
   return parseDrafts(raw);
 }

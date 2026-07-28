@@ -73,7 +73,7 @@ $('#gen').addEventListener('click', async () => {
   try {
     const r = await api('/api/native/generate', { method: 'POST' });
     if (r.error) { $('#nstatus').textContent = '失敗：' + r.error; }
-    else { $('#nstatus').textContent = `產生 ${r.generated} 則（站內 ${r.tagPosts}、新聞 ${r.newsTitles}；額度 ${r.quotaUsed7d}）`; }
+    else { $('#nstatus').textContent = `產生 ${r.generated} 則（熱搜 ${r.hotTrends}、新聞 ${r.newsTitles}、站內 ${r.tagPosts}；額度 ${r.quotaUsed7d}）`; }
     await loadNativeDrafted();
   } finally {
     $('#gen').disabled = false;
