@@ -54,6 +54,22 @@ test('createTextContainer 以 POST 帶 body', async () => {
   assert.equal(body.get('access_token'), 'tok');
 });
 
+test('createTextContainer 帶 topicTag → body 有 topic_tag', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: { id: 'c1' } }));
+  const api = createApi({ fetchImpl });
+  await api.createTextContainer({ accessToken: 'tok', userId: '1', text: 'hi', topicTag: '調酒' });
+  const body = new URLSearchParams(fetchImpl.calls[0].init.body.toString());
+  assert.equal(body.get('topic_tag'), '調酒');
+});
+
+test('createTextContainer 無 topicTag → 不帶 topic_tag', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: { id: 'c1' } }));
+  const api = createApi({ fetchImpl });
+  await api.createTextContainer({ accessToken: 'tok', userId: '1', text: 'hi' });
+  const body = new URLSearchParams(fetchImpl.calls[0].init.body.toString());
+  assert.equal(body.get('topic_tag'), null);
+});
+
 test('publishContainer 打 threads_publish 並帶 creation_id', async () => {
   const fetchImpl = fakeFetch(() => ({ body: { id: 'post_1' } }));
   const api = createApi({ fetchImpl });

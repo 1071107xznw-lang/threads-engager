@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS native_drafts (
   createdAt TEXT NOT NULL,
   publishedAt TEXT,
   publishedPostId TEXT,
+  topic TEXT,
+  scheduledAt TEXT,
   error TEXT
 );
 CREATE TABLE IF NOT EXISTS search_log (
@@ -55,8 +57,10 @@ export function createStore(dbPath) {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA);
-  // 既有 DB 相容：posts.targetId 若不存在則補上（reply_to_id 用）
+  // 既有 DB 相容：缺欄位則補上
   try { db.exec('ALTER TABLE posts ADD COLUMN targetId TEXT'); } catch { /* 已存在 */ }
+  try { db.exec('ALTER TABLE native_drafts ADD COLUMN topic TEXT'); } catch { /* 已存在 */ }
+  try { db.exec('ALTER TABLE native_drafts ADD COLUMN scheduledAt TEXT'); } catch { /* 已存在 */ }
 
   return {
     upsertPost(p) {
@@ -157,6 +161,21 @@ export function createStore(dbPath) {
     },
     setNativeStatus(id, status) {
       db.prepare('UPDATE native_drafts SET status=? WHERE id=?').run(status, id);
+    },
+    // 核准 + 排程一次到位：設 topic/scheduledAt，狀態改 approved
+    setNativeSchedule(id, scheduledAt, topic = null) {
+      db.prepare(
+        "UPDATE native_drafts SET status='approved', scheduledAt=?, topic=? WHERE id=?"
+      ).run(scheduledAt, topic, id);
+    },
+    setNativeTopic(id, topic) {
+      db.prepare('UPDATE native_drafts SET topic=? WHERE id=?').run(topic, id);
+    },
+    // 到期、已核准、有排程時間的原生貼文（供排程器發布）
+    listDueScheduled(nowIso = new Date().toISOString()) {
+      return db.prepare(
+        "SELECT * FROM native_drafts WHERE status='approved' AND scheduledAt IS NOT NULL AND scheduledAt <= ? ORDER BY scheduledAt ASC"
+      ).all(nowIso);
     },
     markNativePublished(id, postId, nowIso = new Date().toISOString()) {
       db.prepare(

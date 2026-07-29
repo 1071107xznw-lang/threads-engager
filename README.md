@@ -51,6 +51,7 @@ npm start          # 開 http://localhost:4321
 | `npm run verify` | 唯讀驗證 token（讀 profile + 自己貼文） | 否 |
 | `npm run exchange` | 短期→60天長期 token + 取 user id | 否（僅換發） |
 | `npm run refresh-token` | 近到期才 refresh 長期 token（可交 cron 每日跑） | 否 |
+| `npm run publish-due` | 發布到期的排程原生貼文（可交 cron 每分鐘跑） | **是**（發文） |
 | `npm run generate` | 抓趨勢→AI 產**原生貼文**草稿進佇列 | 否（只產草稿） |
 | `npm run publish -- "內容"` | 發一則自己的原生貼文（受 DRY_RUN 保護） | **是**（發文） |
 | `npm start` | 開內容中心／設定精靈 http://localhost:4321 | 送出鈕才會 |
@@ -71,6 +72,18 @@ npm start          # 開 http://localhost:4321
 npm run generate            # 產草稿
 npm run dashboard           # 審核 → 發布（DRY_RUN=1 為乾跑）
 ```
+
+**主題（topic_tag）**：dashboard 每張草稿卡片可填一個「主題」（1–50 字、不可含 `.` 或 `&`），
+發布時貼文會歸到該 Threads 話題下。選填。
+
+**排程發佈**：卡片可設「排程時間」後按「排程」（等於核准 + 指定時間）。時間到會自動發布**已核准**的貼文
+（仍是人工先核准，符合 CLAUDE.md 規則 2）。兩種觸發：
+
+- **開著 dashboard**：內建排程器每分鐘檢查、自動發到期的貼文。
+- **關著也要發**：交給 cron 每分鐘跑一次（`DRY_RUN` 開啟時只會 log 不發）：
+  ```bash
+  * * * * *  cd /path/to/repo && npm run publish-due >> publish-due.log 2>&1
+  ```
 
 ### B. 聆聽回覆（回別人的公開貼文）
 

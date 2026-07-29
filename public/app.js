@@ -2,6 +2,10 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
 ));
+const fmt = (iso) => {
+  try { return new Date(iso).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+  catch { return iso; }
+};
 
 async function api(path, opts) {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -58,8 +62,13 @@ async function loadNativeDrafted() {
       </div>
       <textarea maxlength="500">${esc(d.editedText || d.draftText)}</textarea>
       <div class="count"></div>
+      <div class="sched">
+        <input class="topic" placeholder="主題（選填，如：調酒）" maxlength="50" value="${esc(d.topic || '')}" />
+        <input class="when" type="datetime-local" title="排程時間（選填）" />
+      </div>
       <div class="actions">
-        <button class="primary approve">核准</button>
+        <button class="primary approve">核准（可立即發）</button>
+        <button class="schedule">排程</button>
         <button class="skip">跳過</button>
       </div>
     </div>`).join('') || '<p>目前沒有待審草稿。按「產生草稿」。</p>';
@@ -70,10 +79,10 @@ async function loadNativeApproved() {
   const drafts = await api('/api/native/drafts?status=approved');
   $('#napproved').innerHTML = drafts.map((d) => `
     <div class="card" data-id="${d.id}">
-      <div class="meta">#${d.id} ・ 已核准</div>
+      <div class="meta">#${d.id} ・ ${d.scheduledAt ? '⏰ 排程 ' + esc(fmt(d.scheduledAt)) : '已核准'}${d.topic ? ' ・ 主題：' + esc(d.topic) : ''}</div>
       <div class="content">${esc(d.editedText || d.draftText)}</div>
       <div class="actions">
-        <button class="danger publish">發布</button>
+        <button class="danger publish">${d.scheduledAt ? '立即發布' : '發布'}</button>
       </div>
     </div>`).join('') || '<p>沒有待發布的貼文。核准後會出現在這裡。</p>';
 }
@@ -107,10 +116,21 @@ $('#ndrafted').addEventListener('click', async (e) => {
   if (!card) return;
   const id = card.dataset.id;
   const text = card.querySelector('textarea').value;
+  const topic = (card.querySelector('.topic')?.value || '').trim();
   if (e.target.classList.contains('approve')) {
     if ([...text].length > 500) { alert('超過 500 字，請縮短再核准'); return; }
     await api(`/api/native/${id}/draft`, { method: 'POST', body: JSON.stringify({ editedText: text }) });
-    await api(`/api/native/${id}/approve`, { method: 'POST' });
+    const r = await api(`/api/native/${id}/approve`, { method: 'POST', body: JSON.stringify({ topic }) });
+    if (r.error) { alert(r.error); return; }
+    card.remove();
+    await loadNativeApproved();
+  } else if (e.target.classList.contains('schedule')) {
+    const when = card.querySelector('.when')?.value;
+    if (!when) { alert('請先選一個排程時間'); return; }
+    if ([...text].length > 500) { alert('超過 500 字，請縮短再排程'); return; }
+    await api(`/api/native/${id}/draft`, { method: 'POST', body: JSON.stringify({ editedText: text }) });
+    const r = await api(`/api/native/${id}/schedule`, { method: 'POST', body: JSON.stringify({ scheduledAt: when, topic }) });
+    if (r.error) { alert(r.error); return; }
     card.remove();
     await loadNativeApproved();
   } else if (e.target.classList.contains('skip')) {

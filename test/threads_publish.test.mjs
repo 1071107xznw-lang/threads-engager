@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { publishText, validateText } from '../src/threads_publish.mjs';
+import { publishText, validateText, validateTopic } from '../src/threads_publish.mjs';
 
 const settings = {
   userId: '123',
@@ -11,6 +11,29 @@ const settings = {
 
 test('空字串被擋', () => {
   assert.throws(() => validateText('   '), /不可為空/);
+});
+
+test('validateTopic：空回 null、>50字/句點/&被擋', () => {
+  assert.equal(validateTopic(''), null);
+  assert.equal(validateTopic(null), null);
+  assert.equal(validateTopic(' 調酒 '), '調酒');
+  assert.throws(() => validateTopic('字'.repeat(51)), /50/);
+  assert.throws(() => validateTopic('a.b'), /句點/);
+  assert.throws(() => validateTopic('a&b'), /&/);
+});
+
+test('publishText 帶 topic → container 收到 topicTag', async () => {
+  let got = null;
+  const api = {
+    createTextContainer: async (a) => { got = a; return { id: 'c' }; },
+    publishContainer: async () => ({ id: 'p' }),
+  };
+  const res = await publishText({
+    settings, accessToken: 't', text: '嗨', topic: '調酒', api,
+    dryRun: false, waitMs: 0, sleepImpl: async () => {}, log: () => {},
+  });
+  assert.equal(got.topicTag, '調酒');
+  assert.equal(res.topic, '調酒');
 });
 
 test('超過 500 字被擋', () => {
