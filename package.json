@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test",
     "setup": "npm install",
+    "start": "node src/server.mjs",
     "dashboard": "node src/server.mjs",
     "verify": "node src/verify_token.mjs",
     "publish": "node src/publish_cli.mjs",

@@ -1,10 +1,10 @@
-# Argo Threads 工具
+# Threads 內容中心（單帳號工具）
 
-單一品牌帳號（**BAR ARGO TAIPEI** / [@argotaipei](https://www.threads.com/@argotaipei)）的 Threads
-發文與互動輔助工具。走 **Meta 官方 Threads API**、**全程保留人工審核**。
+**單一品牌帳號**的 Threads 發文與互動輔助工具——每個人自架一份、連接**自己的**帳號即可用。
+走 **Meta 官方 Threads API**、**全程保留人工審核**。（最初為 BAR ARGO TAIPEI 打造。）
 
-> 前身是多帳號 + 瀏覽器自動化的舊工具，已重構為單帳號、純官方 API 版。
-> 動工前請先讀 [`CLAUDE.md`](CLAUDE.md)。
+> 前身是多帳號 + 瀏覽器自動化的舊工具，已重構為「一實例一帳號、純官方 API」版。
+> 動工前請先讀 [`CLAUDE.md`](CLAUDE.md)。**不是**多帳號後台/養號工具。
 
 ---
 
@@ -21,38 +21,26 @@
 
 ---
 
-## 快速開始
+## 快速開始（推薦：設定精靈）
 
 ```bash
 npm install
-cp .env.example .env      # 填入你的三個憑證（見下）
+npm start          # 開 http://localhost:4321
 ```
 
-`.env` 需要三個值（在 Meta App Dashboard 取得）：
+第一次啟動、還沒設定時會自動導向**設定精靈**，網頁上兩步完成、不用碰終端機或編設定檔：
 
-| 變數 | 哪裡拿 |
-|---|---|
-| `THREADS_APP_SECRET` | App settings → Basic → App secret（32 碼） |
-| `THREADS_ACCESS_TOKEN` | Use cases → Access the Threads API → User Token Generator（短期，1–2 小時） |
-| `THREADS_USER_ID` | 用 `npm run exchange` 自動取得（見下） |
+1. **前置**：你要有自己的 Meta App（拿到 App Secret + 短期 Access Token；精靈頁面有步驟連結）。
+2. **連接帳號**：貼上 App Secret + 短期 token → 系統自動換成 60 天長期 token、抓出你的帳號。
+3. **品牌設定**：填品牌名、人設、關鍵字、回覆口吻 → 完成即進內容中心。
 
-`DRY_RUN=1` 先保留，確認流程無誤再改 `0`。
+憑證只存在**你這台電腦**的 `data.db`（已 gitignore），不會上傳、不進 repo。設定完就能用「原生貼文」分頁產稿、審核、發布（預設 `DRY_RUN` 乾跑，狀態列可一鍵切正式）。
 
-### 換長期 token + 取得 user id
+> 想分享給別人？把這個 repo 給他，他 `npm install && npm start`、在精靈連自己的帳號即可——**一人一套、各用各的帳號**。
 
-User Token Generator 給的是**短期** token（1–2 小時）。跑一次 exchange 換成 **60 天長期** token 並抓出 user id：
+### 進階：用 `.env`（不透過精靈）
 
-```bash
-npm run exchange
-```
-
-它會印出 `THREADS_USER_ID`（填回 `.env`），並把長期 token 存進 `data.db`（程式優先使用，`.env` 的短期 token 留著沒關係）。
-
-### 驗證 token（唯讀、安全）
-
-```bash
-npm run verify      # 印出帳號名稱 + 最近 5 篇貼文 → 代表 token 有效
-```
+也可手動建 `.env`（`cp .env.example .env`）填 `THREADS_APP_SECRET`／`THREADS_ACCESS_TOKEN`，再 `npm run exchange` 換長期 token + 取 `THREADS_USER_ID`，`npm run verify` 驗證。精靈與 `.env` 兩種方式並存（憑證解析：DB → `.env`）。
 
 ---
 
@@ -64,8 +52,8 @@ npm run verify      # 印出帳號名稱 + 最近 5 篇貼文 → 代表 token �
 | `npm run exchange` | 短期→60天長期 token + 取 user id | 否（僅換發） |
 | `npm run refresh-token` | 近到期才 refresh 長期 token（可交 cron 每日跑） | 否 |
 | `npm run generate` | 抓趨勢→AI 產**原生貼文**草稿進佇列 | 否（只產草稿） |
-| `npm run publish -- "內容"` | 發一則 Argo 原生貼文（受 DRY_RUN 保護） | **是**（發文） |
-| `npm run dashboard` | 開審核台 http://localhost:4321 | 送出鈕才會 |
+| `npm run publish -- "內容"` | 發一則自己的原生貼文（受 DRY_RUN 保護） | **是**（發文） |
+| `npm start` | 開內容中心／設定精靈 http://localhost:4321 | 送出鈕才會 |
 | `npm test` | 跑測試 | 否 |
 
 ---

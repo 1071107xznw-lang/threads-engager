@@ -55,7 +55,7 @@ export async function fetchTrendingTopics({ fetchImpl = fetch, feeds = [], limit
   for (const url of feeds) {
     try {
       const res = await fetchImpl(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ArgoContentBot/1.0)' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ThreadsContentBot/1.0)' },
       });
       if (!res.ok) {
         log(`⚠️ 熱搜 RSS 回應 ${res.status}：${url}`);
@@ -76,7 +76,7 @@ export async function fetchNewsTitles({ fetchImpl = fetch, feeds = [], limit = 1
   for (const url of feeds) {
     try {
       const res = await fetchImpl(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ArgoContentBot/1.0)' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ThreadsContentBot/1.0)' },
       });
       if (!res.ok) {
         log(`⚠️ RSS 回應 ${res.status}：${url}`);

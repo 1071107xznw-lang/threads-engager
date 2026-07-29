@@ -1,7 +1,8 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFile, loadSettings } from './env.mjs';
-import { loadBrand } from './brand.mjs';
+import { existsSync } from 'node:fs';
+import { loadEnvFile, resolveSettings } from './env.mjs';
+import { loadBrand, resolveBrandPath } from './brand.mjs';
 import { createStore } from './store.mjs';
 import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
@@ -9,12 +10,18 @@ import { runGeneration } from './native_generate.mjs';
 
 // 一鍵跑生產線並把草稿寫進審核佇列，印出預覽。之後到 dashboard 審核。
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const configDir = join(__dirname, '..', 'config');
 
 async function main() {
   loadEnvFile(join(__dirname, '..', '.env'));
-  const settings = loadSettings();
-  const brand = loadBrand(join(__dirname, '..', 'config', 'argo.json'));
   const store = createStore(join(__dirname, '..', 'data.db'));
+  const settings = resolveSettings({ store });
+  if (!settings.setupComplete) {
+    console.error('尚未完成設定，請先執行 npm start 開啟設定精靈');
+    store.close();
+    process.exit(1);
+  }
+  const brand = loadBrand(resolveBrandPath(configDir, existsSync));
   try {
     const api = createApi({ appSecret: settings.appSecret, base: settings.apiBase });
     const { accessToken } = getActiveToken({ store, settings });

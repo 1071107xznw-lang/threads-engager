@@ -18,13 +18,34 @@ document.querySelectorAll('.tab').forEach((t) => {
   });
 });
 
-// ── DRY_RUN 標示 ──
+// ── 狀態列 + DRY_RUN 切換 ──
+let liveMode = false;
 async function loadConfig() {
-  const { dryRun } = await api('/api/config');
+  const c = await api('/api/config');
+  if (!c.setupComplete) { location.href = '/setup.html'; return; }
+  liveMode = Boolean(c.liveMode);
+  const title = (c.brandName ? c.brandName + ' ' : '') + '內容中心';
+  document.title = title;
+  $('#brandTitle').textContent = title;
+
   const el = $('#dryrun');
-  el.textContent = dryRun ? 'DRY_RUN 乾跑中（不會真的發文）' : '正式模式（發布會真的送出）';
-  el.className = dryRun ? 'on' : 'off';
+  el.dataset.dry = c.dryRun ? '1' : '0';
+  el.textContent = c.dryRun ? 'DRY_RUN 乾跑中（點此切換）' : '正式模式・點此切回乾跑';
+  el.className = c.dryRun ? 'on' : 'off';
+
+  const bits = [];
+  if (c.username) bits.push(`@${esc(c.username)}`);
+  if (c.tokenExpiresInDays != null) bits.push(`Token 剩 ${c.tokenExpiresInDays} 天`);
+  bits.push(liveMode ? '站內搜尋：開' : '站內搜尋：關（App 未 Live）');
+  $('#statusbar').innerHTML = bits.join('　·　');
 }
+
+$('#dryrun').addEventListener('click', async () => {
+  const currentlyDry = $('#dryrun').dataset.dry === '1';
+  if (currentlyDry && !confirm('關閉 DRY_RUN 後，發布與送出回覆會「真的」公開送到 Threads。\n確定切到正式模式？')) return;
+  await api('/api/config/dryrun', { method: 'POST', body: JSON.stringify({ dryRun: !currentlyDry }) });
+  await loadConfig();
+});
 
 // ── 原生貼文 ──
 async function loadNativeDrafted() {
@@ -134,7 +155,9 @@ async function loadQueue() {
         <button class="primary approve">核准</button>
         <button class="skip">跳過</button>
       </div>
-    </div>`).join('') || '<p>目前沒有待審草稿。按「開始抓取」。</p>';
+    </div>`).join('') || (liveMode
+      ? '<p>目前沒有待審草稿。按「搜尋候選串」。</p>'
+      : '<div class="hint">App 目前在 Development 模式，keyword_search 只會回你自己的貼文、搜不到別人的公開串。<br>把 App 送審上 Live 後即可運作（見 README「上 Live」）。</div>');
 }
 
 $('#queue').addEventListener('click', async (e) => {
