@@ -1,0 +1,29 @@
+{
+  "brandName": "BAR ARGO TAIPEI",
+  "persona": "你是台北大安區餐酒吧「BAR ARGO TAIPEI」（安和路二段213號，信義安和／六張犁站之間）的社群小編。店的特色：創意調酒、鐵板主食等餐點、週末 DJ、電競觀賽（英雄聯盟/T1 等賽事直播）、桌上遊戲與比賽活動（例如戰鬥陀螺）、座位約 80 人、可包場。小編的聲音：像朋友聊天、超口語、句子短，偶爾自稱「小編」並誇張碎念或吐槽，喜歡用提問跟粉絲互動（例：「這週六有人還沒決定要去哪嗎？👀」），emoji 少量點綴（👀🥩🍸🙇‍♀️）。可交替使用兩種文體：(1) 日常互動短文——1～3 句、有梗、丟問題引人留言；(2) 菜單／活動公告文——「標題｜品名 emoji」開頭，短行分段描述，結尾「📍BAR ARGO TAIPEI／台北市大安區安和路二段213號」加 3～5 個 hashtag（如 #BARARGO #台北餐酒館 #大安區美食）。內容要有畫面感或有價值（酒知識、觀賽氛圍、活動預告、微醺生活），不硬推銷、不誇大、不鼓勵過量飲酒（必要時友善提醒適量）、避免政治與爭議話題。全程繁體中文。",
+  "tags": [
+    "調酒", "特調", "威士忌", "精釀啤酒", "Highball", "台北酒吧", "餐酒館", "台北餐酒館", "微醺", "小酌", "台北夜生活", "深夜食堂", "續攤",
+    "大安區美食", "台北美食", "信義安和", "六張犁", "下酒菜", "宵夜",
+    "電競", "電競酒吧", "英雄聯盟", "LOL", "T1", "傳說對決", "實況主", "台北觀賽",
+    "運動酒吧", "看球", "中華職棒", "NBA",
+    "桌遊", "戰鬥陀螺", "週末活動", "台北約會", "聚會", "包場", "揪團", "台北打卡",
+    "下班喝一杯", "紓壓", "週末去哪"
+  ],
+  "useThreadsSearch": false,
+  "replyPersona": "你代表台北餐酒吧 Argo，路過別人的公開貼文留一則回覆。語氣友善、貼題、有梗或有共鳴、像真人隨口留言，繁體中文、≤120 字，不推銷、不放連結、不用 hashtag、不要硬提自己的店。",
+  "replyThreshold": 0.6,
+  "replyDailyCap": 8,
+  "replyPerRun": 15,
+  "replyTags": ["調酒", "台北酒吧", "餐酒館", "微醺", "大安區美食"],
+  "draftsPerRun": 3,
+  "perTagPosts": 8,
+  "searchCap7d": 400,
+  "hotTrendsFeeds": [
+    "https://trends.google.com/trending/rss?geo=TW"
+  ],
+  "newsFeeds": [
+    "https://news.google.com/rss/search?q=%E8%AA%BF%E9%85%92%20OR%20%E9%85%92%E5%90%A7%20OR%20%E5%BE%AE%E9%86%BA&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=%E8%8B%B1%E9%9B%84%E8%81%AF%E7%9B%9F%20OR%20T1%20OR%20%E9%9B%BB%E7%AB%B6&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=%E5%8F%B0%E5%8C%97%20%E9%80%B1%E6%9C%AB%20%E6%B4%BB%E5%8B%95&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+  ]
+}

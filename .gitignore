@@ -1,0 +1,9 @@
+node_modules/
+data.db*
+
+# secrets — 絕不進 repo (見 CLAUDE.md 規則 5)
+.env
+.env.*
+!.env.example
+
+.DS_Store

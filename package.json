@@ -1,0 +1,23 @@
+{
+  "name": "threads-engager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "setup": "npm install",
+    "dashboard": "node src/server.mjs",
+    "verify": "node src/verify_token.mjs",
+    "publish": "node src/publish_cli.mjs",
+    "exchange": "node src/exchange_cli.mjs",
+    "refresh-token": "node src/refresh_cli.mjs",
+    "generate": "node src/generate_cli.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}
