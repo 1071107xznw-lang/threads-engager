@@ -62,6 +62,19 @@ test('native_drafts 狀態機: 建立→編輯→核准→發布', () => {
   s.close();
 });
 
+test('setNativeSchedule 設排程+主題並轉 approved；listDueScheduled 依到期回', () => {
+  const s = createStore(':memory:');
+  const id = s.insertNativeDraft({ draftText: '稿' });
+  s.setNativeSchedule(id, '2026-07-29T10:00:00.000Z', '調酒');
+  const d = s.getNativeDraft(id);
+  assert.equal(d.status, 'approved');
+  assert.equal(d.scheduledAt, '2026-07-29T10:00:00.000Z');
+  assert.equal(d.topic, '調酒');
+  assert.equal(s.listDueScheduled('2026-07-29T09:00:00.000Z').length, 0); // 還沒到
+  assert.equal(s.listDueScheduled('2026-07-29T11:00:00.000Z').length, 1); // 到期
+  s.close();
+});
+
 test('app_settings get/set（缺鍵回 null）', () => {
   const s = createStore(':memory:');
   assert.equal(s.getSetting('nope'), null);

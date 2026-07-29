@@ -17,12 +17,23 @@ export function validateText(text) {
   return text;
 }
 
+// Threads 主題(topic_tag)：1–50 字、不可含句點或 & 符號。空值回 null（不帶主題）。
+export function validateTopic(topic) {
+  if (topic == null) return null;
+  const t = String(topic).trim();
+  if (!t) return null;
+  if ([...t].length > 50) throw new Error('主題不可超過 50 字');
+  if (/[.&]/.test(t)) throw new Error('主題不可包含句點(.)或 & 符號');
+  return t;
+}
+
 // 發布 Argo 自己的一則原生 TEXT 貼文：建立容器 →（等待處理）→ 發布。
 // DRY_RUN 開啟時不打任何寫入 API，只記 log 並回傳可預期結果。
 export async function publishText({
   settings,
   accessToken,
   text,
+  topic,
   api = createApi({ appSecret: settings.appSecret, base: settings.apiBase }),
   dryRun = settings.dryRun,
   waitMs = 30000, // 官方建議發布前約等 30 秒讓伺服器處理
@@ -30,19 +41,20 @@ export async function publishText({
   log = console.log,
 }) {
   validateText(text);
+  const topicTag = validateTopic(topic);
   const { userId } = settings;
 
   if (dryRun) {
-    log(`[DRY_RUN] 不實際發文。預定發布內容：${text}`);
-    return { dryRun: true, id: null, text };
+    log(`[DRY_RUN] 不實際發文${topicTag ? `（主題：${topicTag}）` : ''}。預定發布內容：${text}`);
+    return { dryRun: true, id: null, text, topic: topicTag };
   }
 
-  const container = await api.createTextContainer({ accessToken, userId, text });
+  const container = await api.createTextContainer({ accessToken, userId, text, topicTag });
   await sleepImpl(waitMs);
   const published = await api.publishContainer({
     accessToken,
     userId,
     creationId: container.id,
   });
-  return { dryRun: false, creationId: container.id, id: published.id, text };
+  return { dryRun: false, creationId: container.id, id: published.id, text, topic: topicTag };
 }

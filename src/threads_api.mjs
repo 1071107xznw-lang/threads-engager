@@ -87,8 +87,10 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
     },
 
     // ── 發文（兩步：建立容器 → 發布）───────────────────────────
-    async createTextContainer({ accessToken, userId, text }) {
-      const body = buildQuery(authed(accessToken, { media_type: 'TEXT', text }));
+    async createTextContainer({ accessToken, userId, text, topicTag }) {
+      const params = { media_type: 'TEXT', text };
+      if (topicTag) params.topic_tag = topicTag;
+      const body = buildQuery(authed(accessToken, params));
       return request(fetchImpl, 'POST', `${graph}/${userId}/threads`, body);
     },
 

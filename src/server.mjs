@@ -7,10 +7,11 @@ import { loadEnvFile, resolveSettings } from './env.mjs';
 import { loadBrand, resolveBrandPath } from './brand.mjs';
 import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
-import { publishText } from './threads_publish.mjs';
+import { publishText, validateTopic } from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
 import { sendApprovedReplies } from './threads_reply.mjs';
+import { publishDue } from './scheduler.mjs';
 import { mountSetupRoutes } from './setup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +26,7 @@ export function makePublishDraft({ store, publish }) {
       const e = new Error('只有「已核准」的草稿可以發布'); e.status = 400; throw e;
     }
     const text = d.editedText || d.draftText;
-    const res = await publish({ text });
+    const res = await publish({ text, topic: d.topic });
     if (res.dryRun) return { dryRun: true, text };
     store.markNativePublished(Number(id), res.id);
     return { dryRun: false, id: res.id };
@@ -98,8 +99,23 @@ export function createServer({
       res.json({ ok: true });
     });
     app.post('/api/native/:id/approve', (req, res) => {
-      store.setNativeStatus(Number(req.params.id), 'approved');
-      res.json({ ok: true });
+      try {
+        const topic = req.body && req.body.topic ? validateTopic(req.body.topic) : null;
+        if (topic) store.setNativeTopic(Number(req.params.id), topic);
+        store.setNativeStatus(Number(req.params.id), 'approved');
+        res.json({ ok: true });
+      } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+    });
+    // 核准 + 排程：時間到由排程器自動發（只發已核准的原生貼文）
+    app.post('/api/native/:id/schedule', (req, res) => {
+      try {
+        const { scheduledAt, topic } = req.body || {};
+        if (!scheduledAt || Number.isNaN(Date.parse(scheduledAt))) {
+          res.status(400).json({ error: '請提供有效的排程時間' }); return;
+        }
+        store.setNativeSchedule(Number(req.params.id), new Date(scheduledAt).toISOString(), topic ? validateTopic(topic) : null);
+        res.json({ ok: true });
+      } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
     });
     app.post('/api/native/:id/skip', (req, res) => {
       store.setNativeStatus(Number(req.params.id), 'skipped');
@@ -160,9 +176,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       runGenerate: () => runGeneration({ settings, brand, store, accessToken, api }),
       publishDraft: makePublishDraft({
         store,
-        publish: ({ text }) => publishText({ settings, accessToken, text, api, dryRun: dryRunNow() }),
+        publish: ({ text, topic }) => publishText({ settings, accessToken, text, topic, api, dryRun: dryRunNow() }),
       }),
     };
+
+    // in-process 排程器：每分鐘發到期的已核准排程貼文（DRY_RUN 下只 log）
+    const schedulePublish = ({ text, topic }) =>
+      publishText({ settings, accessToken, text, topic, api, dryRun: dryRunNow() });
+    setInterval(() => {
+      publishDue({ store, publish: schedulePublish, dryRun: dryRunNow() })
+        .catch((e) => console.error('排程器錯誤：', e.message));
+    }, 60_000);
   }
 
   const app = createServer({
