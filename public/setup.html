@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>設定精靈 · 內容中心</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 620px; margin: 32px auto; padding: 0 16px; color: #1c1c1e; background: #fff; }
+    h2 { margin: 0 0 4px; }
+    .steps { display: flex; gap: 8px; margin: 16px 0 24px; font-size: 13px; color: #999; }
+    .steps b { color: #1c1c1e; }
+    .card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; }
+    label { display: block; font-weight: 600; margin: 14px 0 4px; font-size: 14px; }
+    .desc { font-size: 12px; color: #888; font-weight: 400; }
+    input, textarea { width: 100%; font-size: 15px; padding: 9px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+    textarea { min-height: 80px; }
+    button { font-size: 15px; padding: 9px 16px; border-radius: 8px; border: 1px solid #1c1c1e; background: #1c1c1e; color: #fff; cursor: pointer; margin-top: 18px; }
+    button:disabled { opacity: .5; cursor: default; }
+    .msg { margin-top: 12px; font-size: 14px; }
+    .msg.err { color: #b3261e; }
+    .msg.ok { color: #197b3a; }
+    section { display: none; }
+    section.active { display: block; }
+    ol { padding-left: 20px; font-size: 14px; line-height: 1.7; }
+    a { color: #0a66c2; }
+    code { background: #f2f2f2; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h2>設定精靈</h2>
+  <div class="desc">連上你自己的 Threads 帳號，兩步就能開始用。憑證只存在你這台電腦。</div>
+  <div class="steps"><span id="s1">1 前置</span> ・ <span id="s2">2 連接帳號</span> ・ <span id="s3">3 品牌設定</span></div>
+
+  <!-- Step 1 -->
+  <section id="step1" class="active">
+    <div class="card">
+      <h3 style="margin-top:0">你需要先有一個 Meta App</h3>
+      <ol>
+        <li>到 <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a> 建立 App，加入使用案例「Access the Threads API」，並把自己加為 Threads tester。</li>
+        <li>取得 <b>App Secret</b>：App settings → Basic → App secret（32 碼）。</li>
+        <li>取得 <b>Access Token</b>：Use cases → Access the Threads API → Customize → User Token Generator → Generate token（短期，1–2 小時，越快用越好）。</li>
+      </ol>
+      <p class="desc">回覆別人貼文與站內趨勢需 App 送審上 Live；原生發文在 Development 模式即可用。</p>
+      <button id="go2">我已備妥，下一步 →</button>
+    </div>
+  </section>
+
+  <!-- Step 2 -->
+  <section id="step2">
+    <div class="card">
+      <label>App Secret <span class="desc">（32 碼；只存本機）</span></label>
+      <input id="appSecret" type="password" autocomplete="off" placeholder="貼上 App secret" />
+      <label>Access Token <span class="desc">（短期 token；系統會自動換成 60 天長期）</span></label>
+      <input id="accessToken" type="password" autocomplete="off" placeholder="貼上 access token" />
+      <button id="connect">連接帳號</button>
+      <div id="msg2" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- Step 3 -->
+  <section id="step3">
+    <div class="card">
+      <div id="connected" class="msg ok"></div>
+      <label>品牌名稱</label>
+      <input id="brandName" placeholder="例：BAR ARGO TAIPEI" />
+      <label>品牌人設 <span class="desc">（AI 產原生貼文的口吻）</span></label>
+      <textarea id="persona" placeholder="例：台北大安區餐酒吧的社群小編，語氣親切俏皮，主打創意調酒與週末 DJ…"></textarea>
+      <label>趨勢/回覆關鍵字 <span class="desc">（逗號分隔，供上 Live 後站內搜尋）</span></label>
+      <input id="tags" placeholder="調酒, 台北酒吧, 餐酒館" />
+      <label>回覆口吻 <span class="desc">（回別人貼文的草稿口吻）</span></label>
+      <textarea id="replyPersona" placeholder="友善、貼題、有梗，≤120字，不推銷、不放連結…"></textarea>
+      <label>每日回覆上限</label>
+      <input id="replyDailyCap" type="number" value="8" min="0" />
+      <button id="finish">完成，進入內容中心</button>
+      <div id="msg3" class="msg"></div>
+    </div>
+  </section>
+
+  <script src="/setup.js"></script>
+</body>
+</html>

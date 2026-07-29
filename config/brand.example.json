@@ -1,0 +1,20 @@
+{
+  "brandName": "你的品牌名",
+  "persona": "你是「你的品牌名」的社群小編，一句話描述你的店/品牌特色（例：台北大安區的餐酒吧，主打創意調酒與週末 DJ）。語氣自然、口語、帶點個性，少量 emoji，不硬推銷，繁體中文。",
+  "tags": ["產業相關關鍵字1", "關鍵字2", "受眾興趣關鍵字3"],
+  "useThreadsSearch": false,
+  "draftsPerRun": 3,
+  "perTagPosts": 8,
+  "searchCap7d": 400,
+  "hotTrendsFeeds": [
+    "https://trends.google.com/trending/rss?geo=TW"
+  ],
+  "newsFeeds": [
+    "https://news.google.com/rss/search?q=你的主題關鍵字&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+  ],
+  "replyPersona": "你代表「你的品牌名」，路過別人的公開貼文留一則回覆。友善、貼題、有梗或有共鳴，≤120 字，不推銷、不放連結、不用 hashtag。",
+  "replyThreshold": 0.6,
+  "replyDailyCap": 8,
+  "replyPerRun": 15,
+  "replyTags": ["回覆聚焦關鍵字1", "關鍵字2"]
+}

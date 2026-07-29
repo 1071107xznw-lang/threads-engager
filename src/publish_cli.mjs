@@ -1,12 +1,12 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFile, loadSettings } from './env.mjs';
+import { loadEnvFile, resolveSettings } from './env.mjs';
 import { createStore } from './store.mjs';
 import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
 import { publishText } from './threads_publish.mjs';
 
-// 發布 Argo 一則原生貼文。受 DRY_RUN 保護。
+// 發布一則自己的原生貼文。受 DRY_RUN 保護。
 // 用法：npm run publish -- "要發布的內容"
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,8 +18,13 @@ async function main() {
   }
 
   loadEnvFile(join(__dirname, '..', '.env'));
-  const settings = loadSettings();
   const store = createStore(join(__dirname, '..', 'data.db'));
+  const settings = resolveSettings({ store });
+  if (!settings.setupComplete) {
+    console.error('尚未完成設定，請先執行 npm start 開啟設定精靈');
+    store.close();
+    process.exit(1);
+  }
   try {
     const api = createApi({ appSecret: settings.appSecret, base: settings.apiBase });
     const { accessToken } = getActiveToken({ store, settings });

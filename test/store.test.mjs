@@ -62,6 +62,16 @@ test('native_drafts 狀態機: 建立→編輯→核准→發布', () => {
   s.close();
 });
 
+test('app_settings get/set（缺鍵回 null）', () => {
+  const s = createStore(':memory:');
+  assert.equal(s.getSetting('nope'), null);
+  s.setSetting('appSecret', 'abc');
+  assert.equal(s.getSetting('appSecret'), 'abc');
+  s.setSetting('appSecret', 'xyz'); // 覆寫
+  assert.equal(s.getSetting('appSecret'), 'xyz');
+  s.close();
+});
+
 test('upsertPost 存 targetId（reply_to_id 用）', () => {
   const s = createStore(':memory:');
   const { id } = s.upsertPost({ account: 'argo', threadUrl: 'u1', author: 'x', content: 'c', targetId: 'M99' });

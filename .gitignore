@@ -1,6 +1,10 @@
 node_modules/
 data.db*
 
+# 每個使用者自己的品牌設定（由設定精靈產生；範本見 config/brand.example.json）
+config/brand.json
+config/argo.json
+
 # secrets — 絕不進 repo (見 CLAUDE.md 規則 5)
 .env
 .env.*

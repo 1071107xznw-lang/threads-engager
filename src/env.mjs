@@ -34,6 +34,30 @@ export function parseDryRun(v) {
   return TRUEY.has(String(v).trim().toLowerCase());
 }
 
+const trimOrNull = (v) => (v && String(v).trim()) || null;
+
+// 綜合解析設定：憑證優先序 DB（設定精靈寫入）→ .env。
+// 三要素（appSecret / userId / token）齊全才 setupComplete=true；否則 server 進設定模式。
+// dryRun：DB（網頁切換）優先，其次 .env，預設 true（安全，避免誤發）。
+export function resolveSettings({ store, env = process.env }) {
+  const appSecret = trimOrNull(store.getSetting('appSecret')) || trimOrNull(env.THREADS_APP_SECRET);
+  const userId = trimOrNull(store.getSetting('userId')) || trimOrNull(env.THREADS_USER_ID);
+  const envToken = trimOrNull(env.THREADS_ACCESS_TOKEN);
+  const hasStoredToken = Boolean(store.getToken()?.accessToken);
+
+  const dbDry = store.getSetting('dryRun');
+  const dryRun =
+    dbDry != null ? dbDry === '1' || dbDry === 'true'
+    : env.DRY_RUN != null ? parseDryRun(env.DRY_RUN)
+    : true;
+
+  const apiBase = trimOrNull(env.THREADS_API_BASE) || 'https://graph.threads.net';
+  const setupComplete = Boolean(appSecret && userId && (hasStoredToken || envToken));
+
+  // accessToken 回傳 .env 的 bootstrap token（getActiveToken 會優先用 DB 的長期 token）
+  return { setupComplete, appSecret, userId, accessToken: envToken, apiBase, dryRun };
+}
+
 // 從環境變數組出單帳號設定；缺必填即拋繁中錯誤。
 export function loadSettings(env = process.env) {
   const required = ['THREADS_USER_ID', 'THREADS_ACCESS_TOKEN', 'THREADS_APP_SECRET'];

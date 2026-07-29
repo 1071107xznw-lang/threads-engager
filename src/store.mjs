@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS search_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   q TEXT NOT NULL,
   calledAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
 );`;
 
 export function createStore(dbPath) {
@@ -170,6 +174,18 @@ export function createStore(dbPath) {
     countSearches7d(nowIso = new Date().toISOString()) {
       const since = new Date(Date.parse(nowIso) - 7 * 24 * 3600 * 1000).toISOString();
       return db.prepare('SELECT COUNT(*) AS n FROM search_log WHERE calledAt >= ?').get(since).n;
+    },
+
+    // ── 應用設定 KV（appSecret / userId / dryRun / setupComplete 等）──
+    getSetting(key) {
+      const row = db.prepare('SELECT value FROM app_settings WHERE key=?').get(key);
+      return row ? row.value : null;
+    },
+    setSetting(key, value) {
+      db.prepare(`
+        INSERT INTO app_settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+      `).run(key, value == null ? null : String(value));
     },
 
     close() { db.close(); },
