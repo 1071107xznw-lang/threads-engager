@@ -7,8 +7,9 @@ import { loadEnvFile, resolveSettings } from './env.mjs';
 import { loadBrand, resolveBrandPath } from './brand.mjs';
 import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
-import { publishText, validateTopic } from './threads_publish.mjs';
+import { publishText, validateTopic, validateText } from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
+import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
 import { sendApprovedReplies } from './threads_reply.mjs';
 import { publishDue } from './scheduler.mjs';
@@ -91,6 +92,14 @@ export function createServer({
 
     // 原生貼文 產稿→審核→發布
     app.post('/api/native/generate', wrap(() => runGenerate()));
+    // 手動撰寫一則原生貼文（不需 AI）：進待審核佇列
+    app.post('/api/native/manual', (req, res) => {
+      try {
+        const text = validateText(String(req.body?.text ?? ''));
+        const id = store.insertNativeDraft({ draftText: text, angle: '手動撰寫' });
+        res.json({ ok: true, id });
+      } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+    });
     app.get('/api/native/drafts', (req, res) => {
       res.json(store.listNativeByStatus(req.query.status || 'drafted'));
     });
@@ -158,6 +167,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       dryRun: dryRunNow(),
       tokenExpiresInDays,
       liveMode: Boolean(brand.useThreadsSearch),
+      aiAvailable: isClaudeAvailable(),
     };
   };
 

@@ -69,6 +69,24 @@ test('POST /api/native/generate 回產生數量', async () => {
   store.close();
 });
 
+test('POST /api/native/manual 手動新增草稿進待審核', async () => {
+  const { app, store } = nativeSetup();
+  const res = await request(app).post('/api/native/manual').send({ text: '自己寫的貼文' });
+  assert.equal(res.status, 200);
+  const d = store.getNativeDraft(res.body.id);
+  assert.equal(d.status, 'drafted');
+  assert.equal(d.draftText, '自己寫的貼文');
+  store.close();
+});
+
+test('POST /api/native/manual 空內容被擋（400）', async () => {
+  const { app, store } = nativeSetup();
+  const res = await request(app).post('/api/native/manual').send({ text: '   ' });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /不可為空/);
+  store.close();
+});
+
 test('未核准的草稿不能發布（400）', async () => {
   const { app, store } = nativeSetup();
   const id = store.insertNativeDraft({ draftText: '稿' }); // status=drafted

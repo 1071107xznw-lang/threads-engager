@@ -24,10 +24,15 @@ document.querySelectorAll('.tab').forEach((t) => {
 
 // ── 狀態列 + DRY_RUN 切換 ──
 let liveMode = false;
+let aiAvailable = false;
 async function loadConfig() {
   const c = await api('/api/config');
   if (!c.setupComplete) { location.href = '/setup.html'; return; }
   liveMode = Boolean(c.liveMode);
+  aiAvailable = Boolean(c.aiAvailable);
+  // 沒有 claude CLI → 隱藏「產生草稿」、顯示提示（仍可手動撰寫）
+  $('#gen').style.display = aiAvailable ? '' : 'none';
+  $('#aiHint').style.display = aiAvailable ? 'none' : '';
   const title = (c.brandName ? c.brandName + ' ' : '') + '內容中心';
   document.title = title;
   $('#brandTitle').textContent = title;
@@ -71,7 +76,9 @@ async function loadNativeDrafted() {
         <button class="schedule">排程</button>
         <button class="skip">跳過</button>
       </div>
-    </div>`).join('') || '<p>目前沒有待審草稿。按「產生草稿」。</p>';
+    </div>`).join('') || (aiAvailable
+      ? '<p>目前沒有待審草稿。按「產生草稿」，或用上方「自己寫一則」新增。</p>'
+      : '<p>目前沒有待審草稿。用上方「自己寫一則」新增。</p>');
   updateCounts();
 }
 
@@ -107,6 +114,31 @@ $('#gen').addEventListener('click', async () => {
     await loadNativeDrafted();
   } finally {
     $('#gen').disabled = false;
+  }
+});
+
+// ── 手動撰寫一則（不需 AI）──
+const manualText = $('#manualText');
+manualText.addEventListener('input', () => {
+  const n = [...manualText.value].length;
+  const c = $('#manualCount');
+  c.textContent = `${n}/500`;
+  c.style.color = n > 500 ? '#b3261e' : '#999';
+});
+$('#manualAdd').addEventListener('click', async () => {
+  const text = manualText.value.trim();
+  if (!text) { alert('請先輸入貼文內容'); return; }
+  if ([...text].length > 500) { alert('超過 500 字，請縮短'); return; }
+  $('#manualAdd').disabled = true;
+  try {
+    const r = await api('/api/native/manual', { method: 'POST', body: JSON.stringify({ text }) });
+    if (r.error) { alert(r.error); return; }
+    manualText.value = '';
+    $('#manualCount').textContent = '0/500';
+    $('#mstatus').textContent = `已加入待審核 #${r.id}`;
+    await loadNativeDrafted();
+  } finally {
+    $('#manualAdd').disabled = false;
   }
 });
 
