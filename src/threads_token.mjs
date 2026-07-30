@@ -9,6 +9,10 @@ const DEFAULT_THRESHOLD_DAYS = 10; // 剩餘天數低於此值才換發
 export function getActiveToken({ store, settings }) {
   const row = store.getToken();
   if (row && row.accessToken) return row;
+  // DB 與 .env 都沒 token（例如剛切換帳號）→ 明確報錯，不要寫入 null 破壞 auth_token
+  if (!settings.accessToken) {
+    throw new Error('尚未連接帳號（找不到 access token），請先完成設定精靈');
+  }
   store.setToken(settings.accessToken, null); // 到期日未知，先留空
   return store.getToken();
 }

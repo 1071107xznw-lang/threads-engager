@@ -43,6 +43,7 @@
   <header>
     <h2 id="brandTitle">內容中心</h2>
     <span id="dryrun" title="點擊切換乾跑 / 正式模式"></span>
+    <button id="switchAccount" title="登出目前帳號，連接另一個帳號">切換帳號</button>
   </header>
   <div id="statusbar" class="statusbar"></div>
 
@@ -57,6 +58,19 @@
       <button id="gen" class="primary">產生草稿</button>
       <span id="nstatus" class="status"></span>
     </div>
+    <div id="aiHint" class="hint" style="display:none">
+      未偵測到 <code>claude</code> CLI，AI 自動產稿已停用。你仍可在下方「自己寫一則」直接撰寫貼文。<br>
+      想用 AI 幫你想內容？在本機安裝並登入 <code>claude</code> CLI 後重新整理即可啟用。
+    </div>
+    <h3>自己寫一則</h3>
+    <div class="card">
+      <textarea id="manualText" maxlength="500" placeholder="直接把想發的貼文內容寫在這裡…"></textarea>
+      <div class="count" id="manualCount">0/500</div>
+      <div class="actions">
+        <button id="manualAdd" class="primary">加入待審核</button>
+        <span id="mstatus" class="status"></span>
+      </div>
+    </div>
     <h3>待審核</h3>
     <div id="ndrafted"></div>
     <h3>已核准（待發布）</h3>
@@ -70,6 +84,27 @@
       <button id="send" class="primary">送出已核准</button>
       <span id="rstatus" class="status"></span>
       <select id="account" hidden></select>
+    </div>
+
+    <h3>指定貼文回覆</h3>
+    <div class="card">
+      <div class="meta">貼上對方貼文的 <strong>media ID</strong>（純數字），寫好回覆 → 加入待審核，核准後才會送出。</div>
+      <div class="sched">
+        <input class="topic" id="manualTargetId" placeholder="目標貼文 media ID（例：17912345678901234）" />
+      </div>
+      <textarea id="manualReplyText" maxlength="500" placeholder="想回覆的內容…"></textarea>
+      <div class="count" id="manualReplyCount">0/500</div>
+      <div class="actions">
+        <button id="manualReplyAdd" class="primary">加入待審核</button>
+        <span id="mrstatus" class="status"></span>
+      </div>
+    </div>
+
+    <h3>待審核回覆</h3>
+    <div class="bar" id="bulkBar" style="display:none">
+      <label><input type="checkbox" id="selectAll" /> 全選</label>
+      <button id="approveSelected" class="primary">核准所選</button>
+      <span id="bulkStatus" class="status"></span>
     </div>
     <div id="queue"></div>
   </section>

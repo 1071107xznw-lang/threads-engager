@@ -93,6 +93,54 @@ test('upsertPost 存 targetId（reply_to_id 用）', () => {
   s.close();
 });
 
+test('upsertPost 以 targetId 去重：同一則貼文不同 URL 也視為同一列', () => {
+  const s = createStore(':memory:');
+  const a = s.upsertPost({ account: 'argo', threadUrl: 'https://x/@bob/post/ABC', author: 'bob', content: 'c', targetId: 'M1' });
+  assert.equal(a.inserted, true);
+  // 手動端點會用不同格式的 URL，但 targetId 相同 → 不應排成第二列
+  const b = s.upsertPost({ account: 'argo', threadUrl: 'https://www.threads.com/t/M1', targetId: 'M1' });
+  assert.equal(b.inserted, false);
+  assert.equal(b.id, a.id);
+  s.close();
+});
+
+test('saveDraft 覆寫時清掉舊的 editedText（避免送出過期人工編輯）', () => {
+  const s = createStore(':memory:');
+  const { id } = s.upsertPost({ account: 'a', threadUrl: 'u1', author: 'x', content: 'c' });
+  s.saveDraft(id, '第一版');
+  s.editDraft(id, '人工編輯第一版');
+  s.saveDraft(id, '第二版'); // 重新產草稿
+  const row = s.listByStatus('a', 'drafted').find((r) => r.id === id);
+  assert.equal(row.draftText, '第二版');
+  assert.equal(row.editedText, null, '舊的人工編輯應被清掉，不然送出會取回過期內容');
+  s.close();
+});
+
+test('findByTargetId 找得到既有 post', () => {
+  const s = createStore(':memory:');
+  const { id } = s.upsertPost({ account: 'a', threadUrl: 'u1', targetId: 'M7' });
+  assert.equal(s.findByTargetId('a', 'M7').id, id);
+  assert.equal(s.findByTargetId('a', 'nope'), null);
+  s.close();
+});
+
+test('clearAccount 把已核准/已排程內容退回草稿（不讓新帳號自動發舊內容）', () => {
+  const s = createStore(':memory:');
+  // A 帳號：一則已核准回覆 + 一則已排程原生貼文
+  const { id: pid } = s.upsertPost({ account: 'me', threadUrl: 'u1', targetId: 'M1' });
+  s.saveDraft(pid, '回覆稿'); s.setStatus(pid, 'approved');
+  const nid = s.insertNativeDraft({ draftText: '原生稿' });
+  s.setNativeSchedule(nid, '2026-07-29T10:00:00.000Z', null); // status=approved + scheduledAt
+
+  s.clearAccount();
+
+  assert.equal(s.listByStatus('me', 'approved').length, 0, '已核准回覆應退回草稿');
+  assert.equal(s.getNativeDraft(nid).status, 'drafted', '已排程原生貼文應退回草稿');
+  assert.equal(s.getNativeDraft(nid).scheduledAt, null, '排程時間應清掉，避免重連後立即發');
+  assert.equal(s.listDueScheduled('2026-08-01T00:00:00.000Z').length, 0);
+  s.close();
+});
+
 test('search_log 只算 7 天窗內', () => {
   const s = createStore(':memory:');
   const now = Date.now();

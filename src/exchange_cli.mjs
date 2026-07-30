@@ -41,6 +41,8 @@ async function main() {
     ? new Date(Date.now() + Number(ex.expires_in) * 1000).toISOString()
     : null;
   store.setToken(longToken, expiresAt);
+  // 使用者用 .env 重新設定 → 解除切換帳號時設下的「不回落 .env」抑制旗標。
+  if (store.clearIgnoreEnvCreds) store.clearIgnoreEnvCreds();
   store.close();
 
   console.log('');

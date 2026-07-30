@@ -19,6 +19,17 @@ export function pickSendable({ approved, sentToday, dailyCap, recentAuthors }) {
   return out;
 }
 
+// 解析手動輸入的目標貼文 ID。reply_to_id 要的是貼文的 media ID（數字字串），
+// 不是貼文網址——網址裡的短碼無法直接當 reply_to_id，所以貼網址時給明確指引。
+export function parseTargetId(input) {
+  const s = String(input ?? '').trim();
+  if (!s) throw new Error('請填入目標貼文的 media ID');
+  if (/^https?:\/\//i.test(s) || s.includes('threads.com/') || s.includes('threads.net/')) {
+    throw new Error('請填入貼文的 media ID（純數字），不是貼文網址；網址短碼無法當 reply_to_id');
+  }
+  return s;
+}
+
 export function validateReply(text) {
   if (typeof text !== 'string' || text.trim().length === 0) throw new Error('回覆內容不可為空');
   if ([...text].length > MAX_TEXT_LEN) throw new Error(`回覆超過 ${MAX_TEXT_LEN} 字上限`);

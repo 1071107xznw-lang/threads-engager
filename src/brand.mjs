@@ -46,7 +46,10 @@ export function loadBrand(path) {
     // 沒有設定檔就用預設
   }
   const merged = { ...DEFAULT_BRAND, ...raw };
-  // 額度上限不得超過官方硬上限
-  merged.searchCap7d = Math.min(Number(merged.searchCap7d) || DEFAULT_BRAND.searchCap7d, HARD_SEARCH_CAP_7D);
+  // 額度上限不得超過官方硬上限；0 代表「關閉搜尋」而非回落預設，故只有非數字/負數才用預設。
+  const n = Number(merged.searchCap7d);
+  merged.searchCap7d = Number.isFinite(n) && n >= 0
+    ? Math.min(n, HARD_SEARCH_CAP_7D)
+    : Math.min(DEFAULT_BRAND.searchCap7d, HARD_SEARCH_CAP_7D);
   return merged;
 }

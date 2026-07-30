@@ -1,4 +1,18 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+
+// 偵測本機是否有可用的 `claude` CLI（AI 產稿唯一的外部相依）。
+// 偵測結果快取一次，避免每次 /api/config 都 spawn。傳 force=true 可重驗。
+let _claudeAvailable = null;
+export function isClaudeAvailable(force = false) {
+  if (_claudeAvailable !== null && !force) return _claudeAvailable;
+  try {
+    const r = spawnSync('claude', ['--version'], { stdio: 'ignore', timeout: 4000 });
+    _claudeAvailable = !r.error && r.status === 0;
+  } catch {
+    _claudeAvailable = false;
+  }
+  return _claudeAvailable;
+}
 
 export function buildPrompt(post, persona) {
   return [
