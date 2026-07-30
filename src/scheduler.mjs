@@ -16,9 +16,9 @@ export async function publishDue({ store, publish, now = Date.now(), dryRun = fa
   let failed = 0;
   let skipped = 0;
   for (const d of due) {
-    // 原子認領：搶到才發。cron 與 in-process 排程器同時到期時，只有一方會成功，
-    // 另一方 claim=false → 跳過，避免同一則發兩次。
-    if (store.claimDueScheduled && !store.claimDueScheduled(d.id)) {
+    // 原子認領：搶到才發。cron、in-process 排程器、手動「立即發布」同時搶時只有一方成功，
+    // 其餘 claim=false → 跳過，避免同一則發兩次。
+    if (store.claimNativeForPublish && !store.claimNativeForPublish(d.id)) {
       skipped += 1;
       continue;
     }

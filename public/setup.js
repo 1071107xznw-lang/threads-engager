@@ -31,6 +31,13 @@ $('#connect').addEventListener('click', async () => {
   const r = await api('/api/setup/connect', { appSecret, accessToken });
   $('#connect').disabled = false;
   if (r.error) { msg.className = 'msg err'; msg.textContent = '失敗：' + r.error; return; }
+  // 這個帳號之前設定過風格 → 已自動還原，直接進內容中心，不用重設。
+  if (r.brandExists) {
+    msg.className = 'msg ok';
+    msg.textContent = `✅ 已連接 @${r.username}，並還原這個帳號先前的風格設定，前往內容中心…`;
+    setTimeout(() => { location.href = '/'; }, 900);
+    return;
+  }
   $('#connected').textContent = `✅ 已連接 @${r.username}（${r.name || ''}）`;
   $('#brandName').value = r.name || '';
   show(3);

@@ -21,16 +21,29 @@ const PUBLIC = join(__dirname, '..', 'public');
 // 把「發布一則已核准的原生草稿」包成可注入的函式（守門：只有 approved 可發）。
 export function makePublishDraft({ store, publish }) {
   return async (id) => {
-    const d = store.getNativeDraft(Number(id));
+    const nid = Number(id);
+    const d = store.getNativeDraft(nid);
     if (!d) { const e = new Error('找不到草稿'); e.status = 404; throw e; }
     if (d.status !== 'approved') {
       const e = new Error('只有「已核准」的草稿可以發布'); e.status = 400; throw e;
     }
+    // 原子認領：手動「立即發布」與排程器可能同時觸發同一則。搶不到代表另一方正在發 → 擋下，避免雙發。
+    if (store.claimNativeForPublish && !store.claimNativeForPublish(nid)) {
+      const e = new Error('這則正在發布中（可能排程器同時觸發），請稍候再看結果'); e.status = 409; throw e;
+    }
     const text = d.editedText || d.draftText;
-    const res = await publish({ text, topic: d.topic });
-    if (res.dryRun) return { dryRun: true, text };
-    store.markNativePublished(Number(id), res.id);
-    return { dryRun: false, id: res.id };
+    try {
+      const res = await publish({ text, topic: d.topic });
+      if (res.dryRun) {
+        store.setNativeStatus(nid, 'approved'); // DRY_RUN 沒真的發，退回認領
+        return { dryRun: true, text };
+      }
+      store.markNativePublished(nid, res.id);
+      return { dryRun: false, id: res.id };
+    } catch (e) {
+      store.markNativeFailed(nid, String(e.message || e)); // 失敗轉 failed，不卡在 publishing
+      throw e;
+    }
   };
 }
 
@@ -83,14 +96,16 @@ export function createServer({
       store.editDraft(Number(req.params.id), req.body.editedText);
       res.json({ ok: true });
     });
-    // 核准：只允許 drafted → approved。
-    // 守門原因：若允許任意狀態改成 approved，已 sent 的貼文會被重新丟進送出佇列而重複回覆。
-    const draftedIdSet = (account) => new Set(store.listByStatus(account, 'drafted').map((r) => r.id));
+    // 核准：只允許 drafted → approved，且最終要送出的文字不可為空。
+    // 守門原因：(1) 若允許任意狀態改成 approved，已 sent 的貼文會被重丟進送出佇列而重複回覆；
+    //          (2) 空白內容不可核准，否則送出時 (editedText || draftText) 會回落舊稿。
+    const draftedRows = (account) => store.listByStatus(account, 'drafted');
     app.post('/api/posts/:id/approve', (req, res) => {
       const id = Number(req.params.id);
-      if (!draftedIdSet(accountName).has(id)) {
-        res.status(400).json({ error: '只有「待審核」的草稿可以核准' }); return;
-      }
+      const row = draftedRows(accountName).find((r) => r.id === id);
+      if (!row) { res.status(400).json({ error: '只有「待審核」的草稿可以核准' }); return; }
+      const finalText = row.editedText || row.draftText || '';
+      if (!finalText.trim()) { res.status(400).json({ error: '回覆內容不可為空' }); return; }
       store.setStatus(id, 'approved');
       res.json({ ok: true });
     });
@@ -100,17 +115,20 @@ export function createServer({
       const items = Array.isArray(body.items)
         ? body.items
         : (Array.isArray(body.ids) ? body.ids.map((id) => ({ id })) : []);
-      const allowed = draftedIdSet(accountName);
+      const rows = new Map(draftedRows(accountName).map((r) => [r.id, r]));
       let approved = 0;
       let skipped = 0;
       for (const it of items) {
         const id = Number(it?.id);
-        if (!Number.isInteger(id) || !allowed.has(id)) { skipped += 1; continue; }
+        const row = rows.get(id);
+        if (!Number.isInteger(id) || !row) { skipped += 1; continue; }
         // 有帶 editedText 就一律驗證：空白／超長都算無效 → 跳過不核准。
         // （避免使用者把文字框清空卻仍核准，結果送出的是舊草稿。）
         if ('editedText' in it) {
           try { store.editDraft(id, validateReply(String(it.editedText ?? ''))); }
           catch { skipped += 1; continue; }
+        } else if (!(row.editedText || row.draftText || '').trim()) {
+          skipped += 1; continue; // 沒帶編輯內容、既有草稿又是空的 → 不核准
         }
         store.setStatus(id, 'approved');
         approved += 1;
@@ -203,6 +221,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const configDir = join(__dirname, '..', 'config');
   loadEnvFile(join(__dirname, '..', '.env'));
   const store = createStore(join(__dirname, '..', 'data.db'));
+
+  // 啟動時回收上次崩潰／重啟遺留的孤兒 publishing 列（標為 failed，不自動重發）。
+  const recovered = store.recoverStalePublishing();
+  if (recovered > 0) console.warn(`⚠️ 回收 ${recovered} 則中斷的發布（已標為 failed，請到 dashboard 確認）`);
 
   // 憑證與品牌都「每次呼叫時」重新從 DB / 設定檔解析，而不是啟動時鎖進 closure。
   // 這樣「切換帳號」後，執行中的 server 會立刻改用新帳號，不會以舊帳號身分送出。

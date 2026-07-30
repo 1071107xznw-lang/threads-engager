@@ -61,6 +61,11 @@ export function createStore(dbPath) {
   try { db.exec('ALTER TABLE posts ADD COLUMN targetId TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN topic TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN scheduledAt TEXT'); } catch { /* 已存在 */ }
+  // 以 targetId 去重的部分唯一索引：徹底封死並發下同一則貼文排成兩列（各回一次）。
+  // 允許多個 NULL（並非每則 post 都有 targetId）。既有資料若已有重複則建索引會失敗 → 忽略，仍有應用層去重。
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_account_target ON posts(account, targetId) WHERE targetId IS NOT NULL');
+  } catch { /* 既有重複資料 → 略過，靠 upsertPost 應用層去重 */ }
 
   return {
     upsertPost(p) {
@@ -194,14 +199,22 @@ export function createStore(dbPath) {
         "SELECT * FROM native_drafts WHERE status='approved' AND scheduledAt IS NOT NULL AND scheduledAt <= ? ORDER BY scheduledAt ASC"
       ).all(nowIso);
     },
-    // 原子性「認領」一則到期排程貼文：把 approved→publishing，回傳是否認領成功。
-    // SQLite 序列化寫入，因此 cron 與 in-process 排程器同時跑時，只有一方的 UPDATE 會生效，
-    // 另一方 changes=0 → 跳過，避免同一則被發布兩次。
-    claimDueScheduled(id) {
+    // 原子性「認領」一則已核准的原生貼文以供發布：把 approved→publishing，回傳是否認領成功。
+    // SQLite 序列化寫入，因此排程器、cron、手動「立即發布」三者同時搶同一則時，
+    // 只有一方的 UPDATE 會生效（changes>0），其餘 changes=0 → 跳過，避免同一則被發布兩次。
+    claimNativeForPublish(id) {
       const info = db.prepare(
         "UPDATE native_drafts SET status='publishing' WHERE id=? AND status='approved'"
       ).run(id);
       return info.changes > 0;
+    },
+    // 回收孤兒 publishing 列：程序在認領後、標記結果前崩潰／重啟，會留下卡住的 'publishing'。
+    // 啟動時把它們標為 failed（不自動重發，避免逾時誤判重複發送）；使用者可在 dashboard 判斷。
+    recoverStalePublishing() {
+      const info = db.prepare(
+        "UPDATE native_drafts SET status='failed', error='發布中斷（程序重啟）；請確認貼文是否已發出，再決定是否重發' WHERE status='publishing'"
+      ).run();
+      return info.changes;
     },
     markNativePublished(id, postId, nowIso = new Date().toISOString()) {
       db.prepare(

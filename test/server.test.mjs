@@ -201,6 +201,40 @@ test('核准後可發布並記錄 postId', async () => {
   store.close();
 });
 
+test('makePublishDraft：已被別的發布者認領（publishing）的貼文不會再發一次', async () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '稿' });
+  store.setNativeStatus(id, 'approved');
+  let publishCalls = 0;
+  const publish = async () => { publishCalls += 1; return { dryRun: false, id: 'p1' }; };
+  const publishDraft = makePublishDraft({ store, publish });
+  // 模擬另一個發布者已先認領（approved→publishing）
+  assert.equal(store.claimNativeForPublish(id), true);
+  await assert.rejects(() => publishDraft(id)); // 非 approved → 拒絕（不論 400/409）
+  assert.equal(publishCalls, 0, '搶不到就不該再發一次');
+  store.close();
+});
+
+test('makePublishDraft 失敗時轉 failed、不卡在 publishing', async () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '稿' });
+  store.setNativeStatus(id, 'approved');
+  const publishDraft = makePublishDraft({ store, publish: async () => { throw new Error('boom'); } });
+  await assert.rejects(() => publishDraft(id), /boom/);
+  assert.equal(store.getNativeDraft(id).status, 'failed');
+  store.close();
+});
+
+test('單則核准擋空白（伺服器端，不只 UI）', async () => {
+  const { app, store, id } = setup();
+  store.editDraft(id, '   '); // 把草稿改成空白
+  const res = await request(app).post(`/api/posts/${id}/approve`).send();
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /不可為空/);
+  assert.equal(store.listByStatus('a', 'approved').length, 0);
+  store.close();
+});
+
 test('DRY_RUN 發布回 dryRun 且不標記 published', async () => {
   const { app, store } = nativeSetup({ publishResult: { dryRun: true } });
   const id = store.insertNativeDraft({ draftText: '稿' });

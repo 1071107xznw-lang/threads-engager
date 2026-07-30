@@ -59,12 +59,22 @@ test('publishDue：帶 topic、失敗時 markFailed', async () => {
   store.close();
 });
 
-test('claimDueScheduled：只有第一個認領者成功（防 cron+in-process 重複發布）', () => {
+test('claimNativeForPublish：只有第一個認領者成功（防排程器/cron/手動重複發布）', () => {
   const store = createStore(':memory:');
   const id = seedScheduled(store, { scheduledAt: '2026-07-29T11:00:00.000Z' });
-  assert.equal(store.claimDueScheduled(id), true);  // 第一次認領成功
-  assert.equal(store.claimDueScheduled(id), false); // 第二個讀取者搶不到（已非 approved）
+  assert.equal(store.claimNativeForPublish(id), true);  // 第一次認領成功
+  assert.equal(store.claimNativeForPublish(id), false); // 第二個搶不到（已非 approved）
   assert.equal(store.getNativeDraft(id).status, 'publishing');
+  store.close();
+});
+
+test('recoverStalePublishing：把孤兒 publishing 列轉 failed', () => {
+  const store = createStore(':memory:');
+  const id = seedScheduled(store, { scheduledAt: '2026-07-29T11:00:00.000Z' });
+  store.claimNativeForPublish(id); // 模擬認領後崩潰，卡在 publishing
+  assert.equal(store.recoverStalePublishing(), 1);
+  assert.equal(store.getNativeDraft(id).status, 'failed');
+  assert.match(store.getNativeDraft(id).error, /中斷/);
   store.close();
 });
 
