@@ -206,6 +206,28 @@ export function createStore(dbPath) {
         ON CONFLICT(key) DO UPDATE SET value=excluded.value
       `).run(key, value == null ? null : String(value));
     },
+    deleteSetting(key) {
+      db.prepare('DELETE FROM app_settings WHERE key=?').run(key);
+    },
+
+    // ── 切換帳號：清掉目前連接的帳號憑證，回到設定精靈 ──
+    // 一實例一帳號（CLAUDE.md 規則 3）：這是「登出 A 再連 B」，不是同時多帳號。
+    // ignoreEnvCreds：避免清了 DB 之後又被 .env 裡的舊憑證復活。
+    // dryRun 重設為 1：換帳號後預設乾跑，防止對新帳號誤發。
+    clearAccount() {
+      db.prepare('DELETE FROM auth_token WHERE id=1').run();
+      for (const k of ['appSecret', 'userId', 'username', 'setupComplete']) {
+        db.prepare('DELETE FROM app_settings WHERE key=?').run(k);
+      }
+      db.prepare(`
+        INSERT INTO app_settings (key, value) VALUES ('dryRun', '1')
+        ON CONFLICT(key) DO UPDATE SET value='1'
+      `).run();
+      db.prepare(`
+        INSERT INTO app_settings (key, value) VALUES ('ignoreEnvCreds', '1')
+        ON CONFLICT(key) DO UPDATE SET value='1'
+      `).run();
+    },
 
     close() { db.close(); },
   };

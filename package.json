@@ -13,7 +13,8 @@
     "exchange": "node src/exchange_cli.mjs",
     "refresh-token": "node src/refresh_cli.mjs",
     "generate": "node src/generate_cli.mjs",
-    "publish-due": "node src/publish_due_cli.mjs"
+    "publish-due": "node src/publish_due_cli.mjs",
+    "draft-cron": "node src/draft_cron_cli.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

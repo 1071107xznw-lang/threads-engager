@@ -1,4 +1,5 @@
 import { HARD_SEARCH_CAP_7D } from './brand.mjs';
+import { withRetry } from './quota.mjs';
 
 // 站內趨勢素材蒐集：用官方 keyword_search 搜多個 tag，帶額度守門。
 // 只用於「找靈感 / 看近期話題」，不用於回覆別人貼文（那屬 Phase 3 且需人工核准）。
@@ -13,12 +14,21 @@ export class SearchQuotaError extends Error {
 }
 
 // 搜單一關鍵字（先過額度守門，通過才計數並呼叫 API）。
-export async function searchKeyword({ api, store, accessToken, q, limit = 10, cap, nowIso = new Date().toISOString() }) {
+// 限流/5xx 會指數退避重試；每次實際呼叫都計入額度（保守計算，寧可少搜也不撞頂）。
+export async function searchKeyword({
+  api, store, accessToken, q, limit = 10, cap, nowIso = new Date().toISOString(),
+  retries = 2, sleepImpl, log = () => {},
+}) {
   const effectiveCap = Math.min(Number(cap) || HARD_SEARCH_CAP_7D, HARD_SEARCH_CAP_7D);
   const used = store.countSearches7d(nowIso);
   if (used >= effectiveCap) throw new SearchQuotaError(used, effectiveCap);
-  store.logSearch(q, nowIso);
-  const res = await api.keywordSearch({ accessToken, q, limit });
+  const res = await withRetry(
+    () => {
+      store.logSearch(q, nowIso);
+      return api.keywordSearch({ accessToken, q, limit });
+    },
+    { retries, sleepImpl, log },
+  );
   return res.data || [];
 }
 
@@ -32,15 +42,21 @@ export async function gatherTagPosts({
   perTag = 8,
   cap,
   ownUsername = null,
+  maxTags, // 由 quota.planRun 算出的本輪 tag 上限（額度感知；未給則全部搜）
+  retries = 2,
+  sleepImpl,
   nowIso = new Date().toISOString(),
   log = console.log,
 }) {
   const seen = new Set();
   const out = [];
-  for (const tag of tags) {
+  const useTags = Number.isFinite(maxTags) ? tags.slice(0, Math.max(0, maxTags)) : tags;
+  for (const tag of useTags) {
     let posts;
     try {
-      posts = await searchKeyword({ api, store, accessToken, q: tag, limit: perTag, cap, nowIso });
+      posts = await searchKeyword({
+        api, store, accessToken, q: tag, limit: perTag, cap, nowIso, retries, sleepImpl, log,
+      });
     } catch (e) {
       if (e instanceof SearchQuotaError) {
         log(`⚠️ ${e.message}`);

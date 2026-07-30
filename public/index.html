@@ -43,6 +43,7 @@
   <header>
     <h2 id="brandTitle">內容中心</h2>
     <span id="dryrun" title="點擊切換乾跑 / 正式模式"></span>
+    <button id="switchAccount" title="登出目前帳號，連接另一個帳號">切換帳號</button>
   </header>
   <div id="statusbar" class="statusbar"></div>
 
@@ -83,6 +84,27 @@
       <button id="send" class="primary">送出已核准</button>
       <span id="rstatus" class="status"></span>
       <select id="account" hidden></select>
+    </div>
+
+    <h3>指定貼文回覆</h3>
+    <div class="card">
+      <div class="meta">貼上對方貼文的 <strong>media ID</strong>（純數字），寫好回覆 → 加入待審核，核准後才會送出。</div>
+      <div class="sched">
+        <input class="topic" id="manualTargetId" placeholder="目標貼文 media ID（例：17912345678901234）" />
+      </div>
+      <textarea id="manualReplyText" maxlength="500" placeholder="想回覆的內容…"></textarea>
+      <div class="count" id="manualReplyCount">0/500</div>
+      <div class="actions">
+        <button id="manualReplyAdd" class="primary">加入待審核</button>
+        <span id="mrstatus" class="status"></span>
+      </div>
+    </div>
+
+    <h3>待審核回覆</h3>
+    <div class="bar" id="bulkBar" style="display:none">
+      <label><input type="checkbox" id="selectAll" /> 全選</label>
+      <button id="approveSelected" class="primary">核准所選</button>
+      <span id="bulkStatus" class="status"></span>
     </div>
     <div id="queue"></div>
   </section>

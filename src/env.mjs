@@ -40,9 +40,14 @@ const trimOrNull = (v) => (v && String(v).trim()) || null;
 // 三要素（appSecret / userId / token）齊全才 setupComplete=true；否則 server 進設定模式。
 // dryRun：DB（網頁切換）優先，其次 .env，預設 true（安全，避免誤發）。
 export function resolveSettings({ store, env = process.env }) {
-  const appSecret = trimOrNull(store.getSetting('appSecret')) || trimOrNull(env.THREADS_APP_SECRET);
-  const userId = trimOrNull(store.getSetting('userId')) || trimOrNull(env.THREADS_USER_ID);
-  const envToken = trimOrNull(env.THREADS_ACCESS_TOKEN);
+  // 切換帳號後（store.clearAccount）不再回落 .env 憑證，否則舊帳號會被 .env 復活。
+  // 連接新帳號時 connectAccount 會清掉這個旗標。
+  const ignoreEnvCreds = store.getSetting('ignoreEnvCreds') === '1';
+  const envIf = (v) => (ignoreEnvCreds ? null : trimOrNull(v));
+
+  const appSecret = trimOrNull(store.getSetting('appSecret')) || envIf(env.THREADS_APP_SECRET);
+  const userId = trimOrNull(store.getSetting('userId')) || envIf(env.THREADS_USER_ID);
+  const envToken = envIf(env.THREADS_ACCESS_TOKEN);
   const hasStoredToken = Boolean(store.getToken()?.accessToken);
 
   const dbDry = store.getSetting('dryRun');

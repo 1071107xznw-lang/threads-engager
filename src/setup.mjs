@@ -35,8 +35,18 @@ export async function connectAccount({
   store.setSetting('userId', me.id);
   store.setSetting('username', me.username || '');
   store.setToken(longToken, expiresAt);
+  // 連上新帳號後解除「不回落 .env」旗標（見 store.clearAccount）
+  if (store.deleteSetting) store.deleteSetting('ignoreEnvCreds');
 
   return { username: me.username, userId: me.id, name: me.name || '', expiresAt };
+}
+
+// 切換帳號：清掉目前帳號的憑證與設定完成標記 → 前端導回設定精靈連下一個帳號。
+// 一次只服務一個帳號（CLAUDE.md 規則 3）；這裡不保留任何「多帳號並存」狀態。
+export function disconnectAccount({ store }) {
+  const username = store.getSetting('username') || null;
+  store.clearAccount();
+  return { ok: true, disconnected: username };
 }
 
 const BRAND_FIELDS = [
@@ -60,8 +70,10 @@ export function saveBrand({ store, configPath, brand = {} }) {
 }
 
 export function setupStatus({ store, env = process.env }) {
+  const ignoreEnvCreds = store.getSetting('ignoreEnvCreds') === '1';
   const connected = Boolean(
-    (store.getSetting('appSecret') || env.THREADS_APP_SECRET) && store.getToken()?.accessToken
+    (store.getSetting('appSecret') || (ignoreEnvCreds ? null : env.THREADS_APP_SECRET))
+    && store.getToken()?.accessToken
   );
   const brandDone = store.getSetting('setupComplete') === '1';
   return { connected, brandDone };
@@ -78,4 +90,5 @@ export function mountSetupRoutes(app, { store, configDir, apiBase = 'https://gra
     connectAccount({ store, appSecret: req.body.appSecret, shortToken: req.body.accessToken, apiBase })));
   app.post('/api/setup/brand', wrap((req) =>
     saveBrand({ store, configPath: join(configDir, 'brand.json'), brand: req.body })));
+  app.post('/api/setup/disconnect', wrap(() => disconnectAccount({ store })));
 }

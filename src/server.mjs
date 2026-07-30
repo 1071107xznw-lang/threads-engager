@@ -11,7 +11,7 @@ import { publishText, validateTopic, validateText } from './threads_publish.mjs'
 import { runGeneration } from './native_generate.mjs';
 import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
-import { sendApprovedReplies } from './threads_reply.mjs';
+import { sendApprovedReplies, validateReply, parseTargetId } from './threads_reply.mjs';
 import { publishDue } from './scheduler.mjs';
 import { mountSetupRoutes } from './setup.mjs';
 
@@ -42,6 +42,7 @@ export function createServer({
   setDryRun,
   setupComplete = false,
   accounts = [],
+  account, // 單帳號名稱（一實例一帳號）；預設取 accounts[0]
   runScrape,
   runSend,
   runGenerate,
@@ -49,6 +50,7 @@ export function createServer({
 }) {
   const app = express();
   app.use(express.json());
+  const accountName = account || accounts[0]?.name || 'me';
 
   const wrap = (fn) => async (req, res) => {
     try { res.json(await fn(req)); }
@@ -81,9 +83,55 @@ export function createServer({
       store.editDraft(Number(req.params.id), req.body.editedText);
       res.json({ ok: true });
     });
+    // 核准：只允許 drafted → approved。
+    // 守門原因：若允許任意狀態改成 approved，已 sent 的貼文會被重新丟進送出佇列而重複回覆。
+    const draftedIdSet = (account) => new Set(store.listByStatus(account, 'drafted').map((r) => r.id));
     app.post('/api/posts/:id/approve', (req, res) => {
-      store.setStatus(Number(req.params.id), 'approved');
+      const id = Number(req.params.id);
+      if (!draftedIdSet(accountName).has(id)) {
+        res.status(400).json({ error: '只有「待審核」的草稿可以核准' }); return;
+      }
+      store.setStatus(id, 'approved');
       res.json({ ok: true });
+    });
+    // 批次核准：一次核准勾選的多則（可同時帶上編輯後內容，避免編輯被丟掉）。
+    app.post('/api/posts/approve-bulk', (req, res) => {
+      const body = req.body || {};
+      const items = Array.isArray(body.items)
+        ? body.items
+        : (Array.isArray(body.ids) ? body.ids.map((id) => ({ id })) : []);
+      const allowed = draftedIdSet(accountName);
+      let approved = 0;
+      let skipped = 0;
+      for (const it of items) {
+        const id = Number(it?.id);
+        if (!Number.isInteger(id) || !allowed.has(id)) { skipped += 1; continue; }
+        if (typeof it.editedText === 'string' && it.editedText.trim()) {
+          try { store.editDraft(id, validateReply(it.editedText)); }
+          catch { skipped += 1; continue; }
+        }
+        store.setStatus(id, 'approved');
+        approved += 1;
+      }
+      res.json({ ok: true, approved, skipped });
+    });
+    // 手動指定一則貼文寫回覆 → 進「回覆審核」佇列（status=drafted）。
+    // 不新增任何送出路徑：送出仍走 /api/send → sendApprovedReplies（只送 approved）。
+    app.post('/api/reply/manual', (req, res) => {
+      try {
+        const targetId = parseTargetId(req.body?.targetId);
+        const text = validateReply(String(req.body?.text ?? ''));
+        const { id } = store.upsertPost({
+          account: accountName,
+          threadUrl: `https://www.threads.com/t/${targetId}`,
+          author: null,
+          content: '（手動指定的貼文）',
+          targetId,
+        });
+        store.setRelevance(id, 1);
+        store.saveDraft(id, text); // 轉 status=drafted，等人工核准
+        res.json({ ok: true, id, targetId });
+      } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
     });
     app.post('/api/posts/:id/skip', (req, res) => {
       store.setStatus(Number(req.params.id), 'skipped');
