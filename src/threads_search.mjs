@@ -1,5 +1,5 @@
 import { HARD_SEARCH_CAP_7D } from './brand.mjs';
-import { withRetry } from './quota.mjs';
+import { withRetry, clampCap } from './quota.mjs';
 
 // 站內趨勢素材蒐集：用官方 keyword_search 搜多個 tag，帶額度守門。
 // 只用於「找靈感 / 看近期話題」，不用於回覆別人貼文（那屬 Phase 3 且需人工核准）。
@@ -19,11 +19,14 @@ export async function searchKeyword({
   api, store, accessToken, q, limit = 10, cap, nowIso = new Date().toISOString(),
   retries = 2, sleepImpl, log = () => {},
 }) {
-  const effectiveCap = Math.min(Number(cap) || HARD_SEARCH_CAP_7D, HARD_SEARCH_CAP_7D);
-  const used = store.countSearches7d(nowIso);
-  if (used >= effectiveCap) throw new SearchQuotaError(used, effectiveCap);
+  const effectiveCap = clampCap(cap);
+  // 額度守門放進 withRetry 內：每次實際打 API 前都重查一次，
+  // 因為每次退避重試都會再打一次 API、再計一次額度——守門若只在外面做一次，
+  // 重試會突破官方 7 天硬上限。SearchQuotaError 不可重試，會直接中止並上拋。
   const res = await withRetry(
     () => {
+      const used = store.countSearches7d(nowIso);
+      if (used >= effectiveCap) throw new SearchQuotaError(used, effectiveCap);
       store.logSearch(q, nowIso);
       return api.keywordSearch({ accessToken, q, limit });
     },

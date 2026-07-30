@@ -221,8 +221,11 @@ $('#queue').addEventListener('click', async (e) => {
   const id = card.dataset.id;
   const text = card.querySelector('textarea').value;
   if (e.target.classList.contains('approve')) {
+    if (!text.trim()) { alert('回覆內容不可為空'); return; }
+    if ([...text].length > 500) { alert('回覆超過 500 字，請縮短'); return; }
     await api(`/api/posts/${id}/draft`, { method: 'POST', body: JSON.stringify({ editedText: text }) });
-    await api(`/api/posts/${id}/approve`, { method: 'POST' });
+    const r = await api(`/api/posts/${id}/approve`, { method: 'POST' });
+    if (r.error) { alert(r.error); return; }
     card.remove();
   } else if (e.target.classList.contains('skip')) {
     await api(`/api/posts/${id}/skip`, { method: 'POST' });
@@ -308,7 +311,12 @@ $('#approveSelected').addEventListener('click', async () => {
 
 // ── 切換帳號（一次一帳號：登出目前帳號 → 回設定精靈連下一個）──
 $('#switchAccount').addEventListener('click', async () => {
-  if (!confirm('切換帳號會登出目前帳號（清除本機憑證），並回到設定精靈連接另一個帳號。\n草稿與紀錄會留在本機資料庫。確定切換？')) return;
+  if (!confirm(
+    '切換帳號會登出目前帳號（清除本機憑證），並回到設定精靈連接另一個帳號。\n\n'
+    + '· 未送出的草稿與紀錄會留在本機資料庫。\n'
+    + '· 但「已核准／已排程待發」的內容會退回草稿——避免用新帳號的身分自動發出。\n\n'
+    + '確定切換？',
+  )) return;
   const r = await api('/api/setup/disconnect', { method: 'POST' });
   if (r.error) { alert(r.error); return; }
   location.href = '/setup.html';

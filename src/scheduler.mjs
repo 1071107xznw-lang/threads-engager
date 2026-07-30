@@ -14,7 +14,14 @@ export async function publishDue({ store, publish, now = Date.now(), dryRun = fa
 
   let published = 0;
   let failed = 0;
+  let skipped = 0;
   for (const d of due) {
+    // 原子認領：搶到才發。cron 與 in-process 排程器同時到期時，只有一方會成功，
+    // 另一方 claim=false → 跳過，避免同一則發兩次。
+    if (store.claimDueScheduled && !store.claimDueScheduled(d.id)) {
+      skipped += 1;
+      continue;
+    }
     const text = d.editedText || d.draftText;
     try {
       const res = await publish({ text, topic: d.topic });
@@ -22,10 +29,11 @@ export async function publishDue({ store, publish, now = Date.now(), dryRun = fa
       published += 1;
       log(`✅ 排程發布 #${d.id}（post ${res.id}${d.topic ? `，主題：${d.topic}` : ''}）`);
     } catch (e) {
+      // 失敗轉 'failed'（不自動重試；重試會因容器重建而重複發送）。
       store.markNativeFailed(d.id, String(e.message || e));
       failed += 1;
-      log(`❌ 排程發布 #${d.id} 失敗：${e.message || e}`);
+      log(`❌ 排程發布 #${d.id} 失敗（不自動重試）：${e.message || e}`);
     }
   }
-  return { published, failed, skipped: 0 };
+  return { published, failed, skipped };
 }

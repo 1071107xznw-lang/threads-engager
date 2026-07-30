@@ -64,9 +64,17 @@ export function createStore(dbPath) {
 
   return {
     upsertPost(p) {
-      const existing = db.prepare(
-        'SELECT id FROM posts WHERE account=? AND threadUrl=?'
-      ).get(p.account, p.threadUrl);
+      // 去重：優先以 targetId（對方貼文 media id）判定同一則貼文，
+      // 否則回落 threadUrl。這樣「手動指定」與「搜尋來的」同一則貼文不會排成兩列各回一次。
+      let existing = null;
+      if (p.targetId) {
+        existing = db.prepare('SELECT id FROM posts WHERE account=? AND targetId=?')
+          .get(p.account, p.targetId);
+      }
+      if (!existing) {
+        existing = db.prepare('SELECT id FROM posts WHERE account=? AND threadUrl=?')
+          .get(p.account, p.threadUrl);
+      }
       if (existing) return { id: existing.id, inserted: false };
       const info = db.prepare(`
         INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, targetId, discoveredAt)
@@ -82,11 +90,20 @@ export function createStore(dbPath) {
       db.prepare('UPDATE posts SET relevanceScore=? WHERE id=?').run(score, id);
     },
     saveDraft(id, draftText) {
+      // 存新草稿時清掉舊的 editedText，避免送出時 (editedText || draftText) 取回過期的人工編輯。
       db.prepare(`
-        INSERT INTO drafts (postId, draftText, updatedAt) VALUES (?, ?, ?)
-        ON CONFLICT(postId) DO UPDATE SET draftText=excluded.draftText, updatedAt=excluded.updatedAt
+        INSERT INTO drafts (postId, draftText, editedText, updatedAt) VALUES (?, ?, NULL, ?)
+        ON CONFLICT(postId) DO UPDATE SET draftText=excluded.draftText, editedText=NULL, updatedAt=excluded.updatedAt
       `).run(id, draftText, new Date().toISOString());
       db.prepare('UPDATE posts SET status=? WHERE id=?').run('drafted', id);
+    },
+    // 依 targetId 找既有 post（供手動回覆去重／擋重複回覆）。
+    findByTargetId(account, targetId) {
+      return db.prepare(`
+        SELECT p.*, d.draftText, d.editedText
+        FROM posts p LEFT JOIN drafts d ON d.postId = p.id
+        WHERE p.account=? AND p.targetId=?
+      `).get(account, targetId) || null;
     },
     editDraft(id, editedText) {
       db.prepare('UPDATE drafts SET editedText=?, updatedAt=? WHERE postId=?')
@@ -177,13 +194,23 @@ export function createStore(dbPath) {
         "SELECT * FROM native_drafts WHERE status='approved' AND scheduledAt IS NOT NULL AND scheduledAt <= ? ORDER BY scheduledAt ASC"
       ).all(nowIso);
     },
+    // 原子性「認領」一則到期排程貼文：把 approved→publishing，回傳是否認領成功。
+    // SQLite 序列化寫入，因此 cron 與 in-process 排程器同時跑時，只有一方的 UPDATE 會生效，
+    // 另一方 changes=0 → 跳過，避免同一則被發布兩次。
+    claimDueScheduled(id) {
+      const info = db.prepare(
+        "UPDATE native_drafts SET status='publishing' WHERE id=? AND status='approved'"
+      ).run(id);
+      return info.changes > 0;
+    },
     markNativePublished(id, postId, nowIso = new Date().toISOString()) {
       db.prepare(
         "UPDATE native_drafts SET status='published', publishedPostId=?, publishedAt=?, error=NULL WHERE id=?"
       ).run(postId, nowIso, id);
     },
+    // 發布失敗 → 轉 'failed' 並記 error（不留在 approved，否則每分鐘無限重試、失敗後可能重複發送）。
     markNativeFailed(id, error) {
-      db.prepare('UPDATE native_drafts SET error=? WHERE id=?').run(String(error), id);
+      db.prepare("UPDATE native_drafts SET status='failed', error=? WHERE id=?").run(String(error), id);
     },
 
     // ── keyword_search 額度紀錄（滾動 7 天）──
@@ -227,6 +254,14 @@ export function createStore(dbPath) {
         INSERT INTO app_settings (key, value) VALUES ('ignoreEnvCreds', '1')
         ON CONFLICT(key) DO UPDATE SET value='1'
       `).run();
+      // 取消上一個帳號「已核准/已排程」的待送內容，退回草稿。
+      // 否則切到新帳號後，這些內容會用新帳號的身分自動送出（違反規則 2：只發自己核准的）。
+      db.prepare("UPDATE native_drafts SET status='drafted', scheduledAt=NULL WHERE status IN ('approved','publishing')").run();
+      db.prepare("UPDATE posts SET status='drafted' WHERE status='approved'").run();
+    },
+    // 清除 .env 回落抑制旗標（.env 重新設定路徑會用到）。
+    clearIgnoreEnvCreds() {
+      db.prepare("DELETE FROM app_settings WHERE key='ignoreEnvCreds'").run();
     },
 
     close() { db.close(); },

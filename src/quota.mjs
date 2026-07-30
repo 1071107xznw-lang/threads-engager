@@ -5,9 +5,17 @@ import { HARD_SEARCH_CAP_7D } from './brand.mjs';
 
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 把 cap 夾到 [0, 硬上限]。cap=0 代表「關閉搜尋」而非「無上限」，
+// 所以不能用 `Number(cap) || HARD`（那會把 0 翻成最大值）；非數字/負數才回落預設。
+export function clampCap(cap) {
+  const n = Number(cap);
+  if (!Number.isFinite(n) || n < 0) return HARD_SEARCH_CAP_7D;
+  return Math.min(n, HARD_SEARCH_CAP_7D);
+}
+
 // 近 7 天滾動窗的 keyword_search 用量／剩餘。
 export function remainingSearchQuota({ store, cap, nowIso = new Date().toISOString() }) {
-  const effectiveCap = Math.min(Number(cap) || HARD_SEARCH_CAP_7D, HARD_SEARCH_CAP_7D);
+  const effectiveCap = clampCap(cap);
   const used = store.countSearches7d(nowIso);
   return { used, cap: effectiveCap, remaining: Math.max(0, effectiveCap - used) };
 }
@@ -26,7 +34,8 @@ export function planRun({
 }) {
   const rem = Math.max(0, Number(remaining) || 0);
   const runs = Math.max(1, Number(runsPer7d) || 1);
-  const usable = Math.floor(rem * (1 - Math.min(Math.max(reserveRatio, 0), 1)));
+  const ratio = Number.isFinite(Number(reserveRatio)) ? Number(reserveRatio) : 0.1;
+  const usable = Math.floor(rem * (1 - Math.min(Math.max(ratio, 0), 1)));
   const perRun = Math.floor(usable / runs);
   const tags = Math.max(0, Math.min(Number(tagCount) || 0, perRun, maxTagsPerRun));
   return {

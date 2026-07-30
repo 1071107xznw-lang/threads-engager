@@ -76,6 +76,41 @@ test('POST /api/reply/manual 空內容被擋（400）', async () => {
   store.close();
 });
 
+test('POST /api/reply/manual 已送出的目標貼文回 409、不復活', async () => {
+  const { app, store } = setup();
+  const r1 = await request(app).post('/api/reply/manual').send({ targetId: '555', text: '第一次' });
+  store.setStatus(r1.body.id, 'approved');
+  store.markSent(r1.body.id, '2026-07-30T10:00:00.000Z'); // 已送出
+  const r2 = await request(app).post('/api/reply/manual').send({ targetId: '555', text: '再回一次' });
+  assert.equal(r2.status, 409);
+  assert.match(r2.body.error, /已經回覆/);
+  assert.equal(store.findByTargetId('a', '555').status, 'sent', '仍是 sent，未被復活成 drafted');
+  store.close();
+});
+
+test('POST /api/reply/manual 同一 targetId 更新既有草稿、清掉舊編輯', async () => {
+  const { app, store } = setup();
+  const r1 = await request(app).post('/api/reply/manual').send({ targetId: '777', text: '舊稿' });
+  store.editDraft(r1.body.id, '人工編輯舊稿');
+  const r2 = await request(app).post('/api/reply/manual').send({ targetId: '777', text: '新稿' });
+  assert.equal(r2.body.id, r1.body.id);
+  assert.equal(r2.body.updated, true);
+  const row = store.listByStatus('a', 'drafted').find((r) => r.id === r1.body.id);
+  assert.equal(row.draftText, '新稿');
+  assert.equal(row.editedText, null);
+  store.close();
+});
+
+test('POST /api/posts/approve-bulk 空白編輯內容不核准（跳過）', async () => {
+  const { app, store, id } = setup();
+  const res = await request(app).post('/api/posts/approve-bulk')
+    .send({ items: [{ id, editedText: '   ' }] });
+  assert.equal(res.body.approved, 0);
+  assert.equal(res.body.skipped, 1);
+  assert.equal(store.listByStatus('a', 'approved').length, 0);
+  store.close();
+});
+
 test('POST /api/posts/approve-bulk 批次核准並保存編輯內容', async () => {
   const { app, store, id } = setup();
   const p2 = store.upsertPost({ account: 'a', threadUrl: 'u2', author: 'y', content: 'c2' });

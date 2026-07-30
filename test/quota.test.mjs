@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../src/store.mjs';
-import { remainingSearchQuota, planRun, isRetryableError, withRetry } from '../src/quota.mjs';
+import { remainingSearchQuota, planRun, isRetryableError, withRetry, clampCap } from '../src/quota.mjs';
+
+test('clampCap：0 就是 0（關閉搜尋，不是回落成 500）；負數/非數字才回落', () => {
+  assert.equal(clampCap(0), 0, 'cap=0 應為 0，不能被 || 翻成 500');
+  assert.equal(clampCap(100), 100);
+  assert.equal(clampCap(9999), 500); // 夾到硬上限
+  assert.equal(clampCap(-5), 500);   // 負數回落預設
+  assert.equal(clampCap('abc'), 500);
+  assert.equal(clampCap(undefined), 500);
+});
 
 test('remainingSearchQuota：用量/剩餘/硬上限夾擠', () => {
   const s = createStore(':memory:');

@@ -54,8 +54,33 @@ test('publishDue：帶 topic、失敗時 markFailed', async () => {
   assert.equal(res.published, 1);
   assert.equal(res.failed, 1);
   assert.equal(store.getNativeDraft(okId).status, 'published');
-  assert.equal(store.getNativeDraft(badId).status, 'approved'); // 失敗留在 approved，記 error
+  assert.equal(store.getNativeDraft(badId).status, 'failed'); // 失敗轉 failed（不留在 approved 無限重試）
   assert.match(store.getNativeDraft(badId).error, /boom/);
+  store.close();
+});
+
+test('claimDueScheduled：只有第一個認領者成功（防 cron+in-process 重複發布）', () => {
+  const store = createStore(':memory:');
+  const id = seedScheduled(store, { scheduledAt: '2026-07-29T11:00:00.000Z' });
+  assert.equal(store.claimDueScheduled(id), true);  // 第一次認領成功
+  assert.equal(store.claimDueScheduled(id), false); // 第二個讀取者搶不到（已非 approved）
+  assert.equal(store.getNativeDraft(id).status, 'publishing');
+  store.close();
+});
+
+test('publishDue：兩個排程器同時跑，同一則只發一次', async () => {
+  const store = createStore(':memory:');
+  const now = Date.parse('2026-07-29T12:00:00.000Z');
+  seedScheduled(store, { scheduledAt: new Date(now - DAY).toISOString() });
+  let sent = 0;
+  const publish = async () => { sent += 1; return { id: 'p' + sent }; };
+  // 模擬 cron 與 in-process 幾乎同時觸發（共用同一個 store，如同共用 data.db）
+  const [a, b] = await Promise.all([
+    publishDue({ store, publish, now, dryRun: false, log: () => {} }),
+    publishDue({ store, publish, now, dryRun: false, log: () => {} }),
+  ]);
+  assert.equal(sent, 1, '同一則排程貼文只能被發布一次');
+  assert.equal(a.published + b.published, 1);
   store.close();
 });
 
