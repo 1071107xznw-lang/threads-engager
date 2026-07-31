@@ -87,6 +87,21 @@ test('POST /api/scrape 呼叫 runScrape', async () => {
   store.close();
 });
 
+// ── 建議主題 ──
+test('POST /api/native/suggest-topic 回傳 AI 建議主題', async () => {
+  const store = createStore(':memory:');
+  const app = createServer({
+    store, setupComplete: true, getConfig: () => ({}),
+    suggestTopic: async ({ text }) => (text.includes('調酒') ? '調酒' : null),
+  });
+  const res = await request(app).post('/api/native/suggest-topic').send({ text: '來杯調酒' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.topic, '調酒');
+  const empty = await request(app).post('/api/native/suggest-topic').send({ text: '無關' });
+  assert.equal(empty.body.topic, ''); // 想不到 → 空字串
+  store.close();
+});
+
 // ── 手動回覆入口 + 批次核准 ──
 test('POST /api/reply/manual 建立待審核回覆（帶 targetId）', async () => {
   const { app, store } = setup();

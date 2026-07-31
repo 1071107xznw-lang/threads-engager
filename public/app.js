@@ -68,7 +68,8 @@ async function loadNativeDrafted() {
       <textarea maxlength="500">${esc(d.editedText || d.draftText)}</textarea>
       <div class="count"></div>
       <div class="sched">
-        <input class="topic" placeholder="主題（選填，如：調酒）" maxlength="50" value="${esc(d.topic || '')}" />
+        <input class="topic" placeholder="主題（選填，如：調酒）" maxlength="50" value="${esc(d.topic || '')}" title="${d.topic ? 'AI 建議的主題，可自行修改' : ''}" />
+        ${aiAvailable ? '<button class="suggest-topic" title="讓 AI 依內容建議主題">🎯 建議</button>' : ''}
         <input class="when" type="datetime-local" title="排程時間（選填）" />
       </div>
       <div class="actions">
@@ -149,6 +150,19 @@ $('#ndrafted').addEventListener('click', async (e) => {
   const id = card.dataset.id;
   const text = card.querySelector('textarea').value;
   const topic = (card.querySelector('.topic')?.value || '').trim();
+  if (e.target.classList.contains('suggest-topic')) {
+    const btn = e.target;
+    if (!text.trim()) { alert('先有內容才能建議主題'); return; }
+    btn.disabled = true; const old = btn.textContent; btn.textContent = '想主題中…';
+    try {
+      const r = await api('/api/native/suggest-topic', { method: 'POST', body: JSON.stringify({ text }) });
+      if (r.error) { alert(r.error); return; }
+      const input = card.querySelector('.topic');
+      if (r.topic) { input.value = r.topic; input.title = 'AI 建議的主題，可自行修改'; }
+      else alert('AI 想不到合適的主題，維持原樣');
+    } finally { btn.disabled = false; btn.textContent = old; }
+    return;
+  }
   if (e.target.classList.contains('approve')) {
     if ([...text].length > 500) { alert('超過 500 字，請縮短再核准'); return; }
     await api(`/api/native/${id}/draft`, { method: 'POST', body: JSON.stringify({ editedText: text }) });

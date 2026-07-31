@@ -64,7 +64,7 @@ export async function runGeneration({
   // 6) 寫入審核佇列
   const sourceSummary = `熱搜 ${hotTrends.length}、新聞 ${newsTitles.length}、站內 ${tagPosts.length}`;
   const ids = drafts.map((d) =>
-    store.insertNativeDraft({ draftText: d.text, angle: d.angle, sourceSummary })
+    store.insertNativeDraft({ draftText: d.text, angle: d.angle, sourceSummary, topic: d.topic })
   );
 
   return {

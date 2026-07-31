@@ -163,11 +163,11 @@ export function createStore(dbPath) {
     },
 
     // ── 原生貼文草稿佇列 ──
-    insertNativeDraft({ draftText, angle = null, sourceSummary = null }) {
+    insertNativeDraft({ draftText, angle = null, sourceSummary = null, topic = null }) {
       const info = db.prepare(`
-        INSERT INTO native_drafts (draftText, angle, sourceSummary, createdAt)
-        VALUES (?, ?, ?, ?)
-      `).run(draftText, angle, sourceSummary, new Date().toISOString());
+        INSERT INTO native_drafts (draftText, angle, sourceSummary, topic, createdAt)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(draftText, angle, sourceSummary, topic || null, new Date().toISOString());
       return info.lastInsertRowid;
     },
     listNativeByStatus(status) {

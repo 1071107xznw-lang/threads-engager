@@ -47,6 +47,15 @@ test('recentAuthors 回傳窗口內已回覆作者', () => {
   s.close();
 });
 
+test('insertNativeDraft 存 AI 建議的主題', () => {
+  const s = createStore(':memory:');
+  const id = s.insertNativeDraft({ draftText: '稿', topic: '派對' });
+  assert.equal(s.getNativeDraft(id).topic, '派對');
+  const id2 = s.insertNativeDraft({ draftText: '稿2' }); // 沒帶 topic → null
+  assert.equal(s.getNativeDraft(id2).topic, null);
+  s.close();
+});
+
 test('native_drafts 狀態機: 建立→編輯→核准→發布', () => {
   const s = createStore(':memory:');
   const id = s.insertNativeDraft({ draftText: '稿', angle: 'x', sourceSummary: 's' });

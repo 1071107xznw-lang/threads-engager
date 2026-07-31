@@ -1,4 +1,5 @@
 import { defaultRunner } from './ai.mjs';
+import { sanitizeTopic } from './threads_publish.mjs';
 
 // 依品牌人設 + 趨勢素材，組出「產生原生貼文草稿」的繁中 prompt。
 export function buildNativePrompt({ persona, hotTrends = [], newsTitles = [], tagPosts = [], ownPosts = [], n = 3 }) {
@@ -39,8 +40,10 @@ export function buildNativePrompt({ persona, hotTrends = [], newsTitles = [], ta
   lines.push('  政治、災難、意外、悲劇、八卦爭議一律跳過，寧可不蹭。');
   lines.push('- hashtag 最多 1 個，可不用。');
   lines.push('- 每則切入角度不同（angle 用一句話說明這則的切入點）。');
+  lines.push('- 為每則建議「一個」最貼切的 Threads 主題(topic)：1 個簡短詞或詞組、≤20 字、');
+  lines.push('  貼近該則內容、用貼文的語言、**不含句點/&/# 等符號**；想不到合適的就給空字串。');
   lines.push('');
-  lines.push(`只輸出一個 JSON 陣列，長度 ${n}，格式：[{"text":"貼文內容","angle":"切入點"}]，不要其他文字。`);
+  lines.push(`只輸出一個 JSON 陣列，長度 ${n}，格式：[{"text":"貼文內容","angle":"切入點","topic":"主題"}]，不要其他文字。`);
   return lines.join('\n');
 }
 
@@ -56,10 +59,30 @@ export function parseDrafts(raw, { maxLen = 500 } = {}) {
     if (!item || typeof item.text !== 'string') continue;
     const text = item.text.trim();
     if (!text || [...text].length > maxLen) continue;
-    out.push({ text, angle: typeof item.angle === 'string' ? item.angle.trim() : null });
+    out.push({
+      text,
+      angle: typeof item.angle === 'string' ? item.angle.trim() : null,
+      topic: sanitizeTopic(item.topic), // AI 建議的主題（整理過；無效則 null）
+    });
   }
   if (!out.length) throw new Error('AI 未產出有效草稿');
   return out;
+}
+
+// 為單一則貼文內容建議一個主題（給 dashboard 的「建議主題」按鈕用；也涵蓋手寫草稿）。
+export async function suggestTopic({ text, persona = '', runner = defaultRunner }) {
+  if (!text || !String(text).trim()) return null;
+  const prompt = [
+    persona ? `品牌人設：${persona}` : '',
+    '為下面這則 Threads 貼文，建議「一個」最貼切的 Threads 主題(topic)。',
+    '規則：1 個簡短詞或詞組、≤20 字、貼近內容、用貼文的語言、不含句點/&/# 等符號。',
+    '',
+    `貼文：${String(text).trim()}`,
+    '',
+    '只輸出主題本身這一行文字，不要引號、不要解釋、不要其他內容。',
+  ].filter(Boolean).join('\n');
+  const raw = await runner(prompt);
+  return sanitizeTopic(String(raw).trim().split('\n')[0]);
 }
 
 export async function generateDrafts({
@@ -73,5 +96,5 @@ export async function generateDrafts({
 }) {
   const prompt = buildNativePrompt({ persona, hotTrends, newsTitles, tagPosts, ownPosts, n });
   const raw = await runner(prompt);
-  return parseDrafts(raw);
+  return parseDrafts(raw); // 每則含 { text, angle, topic }
 }

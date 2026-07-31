@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { publishText, validateText, validateTopic } from '../src/threads_publish.mjs';
+import { publishText, validateText, validateTopic, sanitizeTopic } from '../src/threads_publish.mjs';
+
+test('sanitizeTopic：整理建議主題（去符號/#/引號、截 50、空回 null）', () => {
+  assert.equal(sanitizeTopic('調酒.吧&夜'), '調酒吧夜');
+  assert.equal(sanitizeTopic('#微醺'), '微醺');
+  assert.equal(sanitizeTopic('  "派對"  '), '派對');
+  assert.equal([...sanitizeTopic('字'.repeat(80))].length, 50);
+  assert.equal(sanitizeTopic('  '), null);
+  assert.equal(sanitizeTopic(null), null);
+});
 
 const settings = {
   userId: '123',
