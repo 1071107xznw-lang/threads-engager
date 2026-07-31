@@ -1,7 +1,9 @@
+import { existsSync } from 'node:fs';
 import { createApi } from './threads_api.mjs';
 import { gatherTagPosts } from './threads_search.mjs';
 import { fetchNewsTitles, fetchTrendingTopics } from './trends.mjs';
 import { generateDrafts } from './native_ai.mjs';
+import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 
 // 完整生產線：站內趨勢 + 網路趨勢 + 自己貼文 → AI 產稿 → 寫入 native_drafts（status=drafted）。
 // 供 CLI 與 server 端點共用。所有外部相依（api/runner/fetch）皆可注入以利測試。
@@ -14,6 +16,9 @@ export async function runGeneration({
   runner,
   fetchImpl,
   ownUsername = null,
+  configDir = null, // 用來找 config/knowledge.md（品牌知識庫）
+  knowledge = null, // 可直接注入（測試用）；未給則從 configDir 讀
+  redTeam = true,
   nowIso = new Date().toISOString(),
   log = console.log,
 }) {
@@ -47,25 +52,36 @@ export async function runGeneration({
   const newsTitles = await fetchNewsTitles({ fetchImpl, feeds: brand.newsFeeds, log });
   log(`網路趨勢：${newsTitles.length} 則新聞標題`);
 
-  // 4) 自己近期貼文（語氣樣本、避免重複）
+  // 4) 自己近期貼文（語氣樣本：學說話方式、避免重複主題）
   let ownPosts = [];
   try {
-    const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 5 });
+    const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 15 });
     ownPosts = (res.data || []).map((p) => p.text).filter(Boolean);
   } catch (e) {
     log(`⚠️ 讀取自己貼文失敗（略過）：${e.message}`);
   }
+  log(`語氣樣本：自己的 ${ownPosts.length} 則貼文`);
 
-  // 5) AI 產稿
+  // 5) 品牌知識庫（我們敢背書的事實）——AI 只能用肯定句講這裡有的東西
+  const kb = knowledge != null
+    ? knowledge
+    : loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null);
+  log(kb ? `知識庫：已載入 ${kb.length} 字` : '知識庫：無（建議建立 config/knowledge.md，讓 AI 敢講你們的專業）');
+
+  // 6) AI 產稿（含紅隊審稿：把會被抓語病的斷言改成站得住的說法）
   const drafts = await generateDrafts({
-    persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts, n: brand.draftsPerRun, runner,
+    persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts,
+    knowledge: kb, n: brand.draftsPerRun, runner, redTeam, log,
   });
 
-  // 6) 寫入審核佇列
+  // 7) 寫入審核佇列
   const sourceSummary = `熱搜 ${hotTrends.length}、新聞 ${newsTitles.length}、站內 ${tagPosts.length}`;
   const ids = drafts.map((d) =>
-    store.insertNativeDraft({ draftText: d.text, angle: d.angle, sourceSummary, topic: d.topic })
+    store.insertNativeDraft({
+      draftText: d.text, angle: d.angle, sourceSummary, topic: d.topic, reviewNote: d.reviewNote,
+    })
   );
+  const reviewed = drafts.filter((d) => d.reviewNote).length;
 
   return {
     generated: ids.length,
@@ -73,6 +89,9 @@ export async function runGeneration({
     hotTrends: hotTrends.length,
     tagPosts: tagPosts.length,
     newsTitles: newsTitles.length,
+    ownPosts: ownPosts.length,
+    knowledgeChars: kb.length,
+    reviewed, // 被紅隊改寫過的則數
     quotaUsed7d: store.countSearches7d(nowIso),
   };
 }

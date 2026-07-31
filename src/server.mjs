@@ -321,7 +321,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },
     runGenerate: () => {
       const { settings, api, accessToken } = currentAuth();
-      return runGeneration({ settings, brand: currentBrand(), store, accessToken, api });
+      return runGeneration({ settings, brand: currentBrand(), store, accessToken, api, configDir });
     },
     suggestTopic: ({ text }) => nativeSuggestTopic({ text, persona: currentBrand().persona }),
     publishDraft: makePublishDraft({

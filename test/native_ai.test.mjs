@@ -1,6 +1,85 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNativePrompt, parseDrafts, generateDrafts, suggestTopic } from '../src/native_ai.mjs';
+import {
+  buildNativePrompt, parseDrafts, generateDrafts, suggestTopic,
+  buildRedTeamPrompt, parseRedTeam, redTeamDraft,
+} from '../src/native_ai.mjs';
+
+// ── 語氣人化 + 反商業 + 知識庫接地 ──
+test('buildNativePrompt：含人化寫法、反 AI 腔、反商業腔規則', () => {
+  const p = buildNativePrompt({ persona: 'x', n: 3 });
+  assert.match(p, /第一行就是鉤子/);
+  assert.match(p, /AI 腔/);
+  assert.match(p, /在這個◯◯的時代/);
+  assert.match(p, /商業腔/);
+  assert.match(p, /立即預約|歡迎來店裡坐坐/);
+  assert.match(p, /不放連結/);
+  assert.match(p, /會被抓語病的權威斷言/);
+});
+
+test('buildNativePrompt：有知識庫時要求只用它做肯定陳述', () => {
+  const p = buildNativePrompt({ persona: 'x', knowledge: '- 紅酒先冰 20 分鐘', n: 1 });
+  assert.match(p, /知識庫/);
+  assert.match(p, /紅酒先冰 20 分鐘/);
+  assert.match(p, /不准當權威事實斷言/);
+});
+
+test('buildNativePrompt：自己的貼文當語氣範本（模仿說話方式）', () => {
+  const p = buildNativePrompt({ persona: 'x', ownPosts: ['小編今天又忘記關冰箱🙇‍♀️'], n: 1 });
+  assert.match(p, /這就是我們的說話方式/);
+  assert.match(p, /小編今天又忘記關冰箱/);
+});
+
+// ── 紅隊審稿 ──
+test('buildRedTeamPrompt：知識型網友視角 + 不准改得更無聊', () => {
+  const p = buildRedTeamPrompt({ text: '紅酒就是要常溫喝', knowledge: '- 我們先冰 20 分鐘' });
+  assert.match(p, /抓語病/);
+  assert.match(p, /紅酒就是要常溫喝/);
+  assert.match(p, /不可以比原本更無聊/);
+  assert.match(p, /不准加「可能、也許/);
+  assert.match(p, /我們先冰 20 分鐘/); // 知識庫有帶進去
+});
+
+test('parseRedTeam：解析改寫結果', () => {
+  const r = parseRedTeam('前綴 {"text":"改好的稿","changed":true,"note":"把常溫斷言改成自家做法"} 後綴', { fallbackText: '原稿' });
+  assert.equal(r.text, '改好的稿');
+  assert.equal(r.changed, true);
+  assert.match(r.note, /自家做法/);
+});
+
+test('parseRedTeam：壞輸出 → 保留原稿、不擋流程', () => {
+  const r = parseRedTeam('AI 講了一堆廢話沒有 JSON', { fallbackText: '原稿' });
+  assert.equal(r.text, '原稿');
+  assert.equal(r.changed, false);
+});
+
+test('redTeamDraft：AI 掛掉也不擋流程（原文放行）', async () => {
+  const runner = async () => { throw new Error('claude 掛了'); };
+  const r = await redTeamDraft({ text: '原稿', runner });
+  assert.equal(r.text, '原稿');
+  assert.equal(r.changed, false);
+});
+
+test('generateDrafts：跑紅隊審稿，改寫後的文字進草稿並附 reviewNote', async () => {
+  // 用「知識型網友」判斷是不是紅隊 prompt（只有紅隊 prompt 有這個角色設定）
+  const runner = async (prompt) => (
+    prompt.includes('知識型網友')
+      ? '{"text":"台灣的常溫對紅酒太熱，我們一律先冰 20 分鐘","changed":true,"note":"把常溫斷言改成自家做法"}'
+      : '[{"text":"紅酒就是要常溫喝","angle":"a","topic":"紅酒"}]'
+  );
+  const out = await generateDrafts({ persona: 'p', n: 1, runner, knowledge: '- 先冰 20 分鐘' });
+  assert.match(out[0].text, /先冰 20 分鐘/);
+  assert.match(out[0].reviewNote, /自家做法/);
+  assert.equal(out[0].topic, '紅酒'); // 主題保留
+});
+
+test('generateDrafts：redTeam=false 時不跑審稿（省一次呼叫）', async () => {
+  let calls = 0;
+  const runner = async () => { calls += 1; return '[{"text":"稿","angle":"a","topic":"t"}]'; };
+  const out = await generateDrafts({ persona: 'p', n: 1, runner, redTeam: false });
+  assert.equal(calls, 1);
+  assert.equal(out[0].reviewNote, '');
+});
 
 test('buildNativePrompt 含 persona/熱搜/新聞/站內/自己貼文', () => {
   const p = buildNativePrompt({
