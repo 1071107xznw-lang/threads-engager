@@ -27,6 +27,19 @@ export function validateTopic(topic) {
   return t;
 }
 
+// 寬鬆整理 AI 建議的主題：去掉不合規字元/引號/#、截到 50 字，整不出來回 null。
+// 用途：主題「建議」是給人參考的，寧可清乾淨也不要整段拒絕（送出前仍走 validateTopic 把關）。
+export function sanitizeTopic(raw) {
+  if (raw == null) return null;
+  let t = String(raw)
+    .replace(/[.&#"'`]/g, '') // 去句點、&、井號、引號
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!t) return null;
+  t = [...t].slice(0, 50).join(''); // 以字元計截斷
+  return t || null;
+}
+
 // 發布 Argo 自己的一則原生 TEXT 貼文：建立容器 →（等待處理）→ 發布。
 // DRY_RUN 開啟時不打任何寫入 API，只記 log 並回傳可預期結果。
 export async function publishText({

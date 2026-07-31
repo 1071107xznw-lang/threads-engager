@@ -10,6 +10,7 @@ import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
 import { publishText, validateTopic, validateText } from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
+import { suggestTopic as nativeSuggestTopic } from './native_ai.mjs';
 import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
 import { sendApprovedReplies, validateReply, parseTargetId } from './threads_reply.mjs';
@@ -89,6 +90,7 @@ export function createServer({
   runScrape,
   runSend,
   runGenerate,
+  suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
   publishDraft,
 }) {
   const app = express();
@@ -198,6 +200,13 @@ export function createServer({
 
     // 原生貼文 產稿→審核→發布
     app.post('/api/native/generate', wrap(() => runGenerate()));
+    // 為一段草稿內容建議主題（AI）。給前端「建議主題」按鈕用；手寫草稿也適用。
+    if (suggestTopic) {
+      app.post('/api/native/suggest-topic', wrap(async (req) => {
+        const topic = await suggestTopic({ text: String(req.body?.text ?? '') });
+        return { topic: topic || '' };
+      }));
+    }
     // 手動撰寫一則原生貼文（不需 AI）：進待審核佇列
     app.post('/api/native/manual', (req, res) => {
       try {
@@ -314,6 +323,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const { settings, api, accessToken } = currentAuth();
       return runGeneration({ settings, brand: currentBrand(), store, accessToken, api });
     },
+    suggestTopic: ({ text }) => nativeSuggestTopic({ text, persona: currentBrand().persona }),
     publishDraft: makePublishDraft({
       store,
       publish: ({ text, topic }) => {
