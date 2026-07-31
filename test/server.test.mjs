@@ -19,6 +19,44 @@ function setup() {
   return { store, app, id };
 }
 
+// ── 登入密碼（Basic Auth）──
+function authApp() {
+  const store = createStore(':memory:');
+  const app = createServer({ store, setupComplete: true, getConfig: () => ({ ok: true }), password: 'p@ss' });
+  return { store, app };
+}
+
+test('設密碼後：未帶認證回 401 + WWW-Authenticate', async () => {
+  const { app, store } = authApp();
+  const res = await request(app).get('/api/config');
+  assert.equal(res.status, 401);
+  assert.match(res.headers['www-authenticate'] || '', /Basic/);
+  store.close();
+});
+
+test('設密碼後：正確密碼可通過', async () => {
+  const { app, store } = authApp();
+  const res = await request(app).get('/api/config').auth('anyuser', 'p@ss');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  store.close();
+});
+
+test('設密碼後：錯誤密碼回 401', async () => {
+  const { app, store } = authApp();
+  const res = await request(app).get('/api/config').auth('anyuser', 'wrong');
+  assert.equal(res.status, 401);
+  store.close();
+});
+
+test('沒設密碼：維持免登入（本機行為不變）', async () => {
+  const store = createStore(':memory:');
+  const app = createServer({ store, setupComplete: true, getConfig: () => ({ ok: true }) });
+  const res = await request(app).get('/api/config');
+  assert.equal(res.status, 200);
+  store.close();
+});
+
 test('GET /api/accounts 回傳帳號', async () => {
   const { app, store } = setup();
   const res = await request(app).get('/api/accounts');

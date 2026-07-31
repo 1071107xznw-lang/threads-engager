@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { timingSafeEqual } from 'node:crypto';
 import { createStore } from './store.mjs';
 import { loadEnvFile, resolveSettings } from './env.mjs';
 import { loadBrand, resolveBrandPath } from './brand.mjs';
@@ -17,6 +18,34 @@ import { mountSetupRoutes } from './setup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(__dirname, '..', 'public');
+
+// 定時比較（避免以字元逐一比較洩漏長度/內容的計時側信道）。
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
+
+// HTTP Basic Auth middleware。只有設了密碼才啟用；帳號任意、只比對密碼。
+// 用途：區網/遠端存取時保護整個 dashboard（含設定精靈）。本機不設密碼則維持免登入。
+export function basicAuth(password) {
+  return (req, res, next) => {
+    const m = /^Basic (.+)$/.exec(req.headers.authorization || '');
+    let ok = false;
+    if (m) {
+      const decoded = Buffer.from(m[1], 'base64').toString('utf8');
+      const pass = decoded.slice(decoded.indexOf(':') + 1);
+      ok = safeEqual(pass, password);
+    }
+    if (!ok) {
+      res.set('WWW-Authenticate', 'Basic realm="threads-engager", charset="UTF-8"');
+      res.status(401).send('需要登入');
+      return;
+    }
+    next();
+  };
+}
 
 // 把「發布一則已核准的原生草稿」包成可注入的函式（守門：只有 approved 可發）。
 export function makePublishDraft({ store, publish }) {
@@ -56,12 +85,15 @@ export function createServer({
   setupComplete = false,
   accounts = [],
   account, // 單帳號名稱（一實例一帳號）；預設取 accounts[0]
+  password, // 選用：設了就用 Basic Auth 保護整個 dashboard
   runScrape,
   runSend,
   runGenerate,
   publishDraft,
 }) {
   const app = express();
+  // 登入密碼（若有）擋在所有路由與靜態檔之前。未設密碼＝維持本機免登入。
+  if (password) app.use(basicAuth(password));
   app.use(express.json());
   const accountName = account || accounts[0]?.name || 'me';
 
@@ -311,15 +343,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       .finally(() => { schedulerBusy = false; });
   }, 60_000);
 
+  const dashboardPassword = (process.env.DASHBOARD_PASSWORD || '').trim() || null;
   const app = createServer({
-    store, configDir, apiBase: initial.apiBase, account: ACCOUNT,
+    store, configDir, apiBase: initial.apiBase, account: ACCOUNT, password: dashboardPassword,
     getConfig, setDryRun, setupComplete: initial.setupComplete, ...handlers,
   });
-  app.listen(4321, () => {
+  const PORT = Number(process.env.PORT) || 4321;
+  app.listen(PORT, () => {
+    const url = `http://localhost:${PORT}`;
     if (!initial.setupComplete) {
-      console.log('尚未設定 → 開啟 http://localhost:4321 完成設定精靈');
+      console.log(`尚未設定 → 開啟 ${url} 完成設定精靈`);
     } else {
-      console.log('Dashboard: http://localhost:4321' + (dryRunNow() ? '　[DRY_RUN 乾跑中]' : ''));
+      console.log(`Dashboard: ${url}` + (dryRunNow() ? '　[DRY_RUN 乾跑中]' : ''));
     }
+    console.log(dashboardPassword ? '🔒 已啟用登入密碼（遠端/區網存取需輸入）' : '🔓 未設登入密碼（僅建議本機使用；遠端請設 DASHBOARD_PASSWORD）');
   });
 }
