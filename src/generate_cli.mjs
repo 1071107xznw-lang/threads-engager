@@ -25,9 +25,9 @@ async function main() {
   try {
     const api = createApi({ appSecret: settings.appSecret, base: settings.apiBase });
     const { accessToken } = getActiveToken({ store, settings });
-    const res = await runGeneration({ settings, brand, store, accessToken, api });
+    const res = await runGeneration({ settings, brand, store, accessToken, api, configDir });
 
-    console.log(`\n✅ 產生 ${res.generated} 則草稿（站內素材 ${res.tagPosts}、新聞 ${res.newsTitles}）`);
+    console.log(`\n✅ 產生 ${res.generated} 則草稿（站內素材 ${res.tagPosts}、新聞 ${res.newsTitles}${res.reviewed ? `、紅隊改寫 ${res.reviewed}` : ''}）`);
     for (const id of res.ids) {
       const d = store.getNativeDraft(id);
       console.log(`\n— #${id}　${d.angle ? '（' + d.angle + '）' : ''}\n${d.draftText}`);

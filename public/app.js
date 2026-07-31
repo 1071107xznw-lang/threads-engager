@@ -64,6 +64,7 @@ async function loadNativeDrafted() {
       <div class="meta">
         ${d.angle ? `<span class="angle">${esc(d.angle)}</span> ・ ` : ''}
         <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>
+        ${d.reviewNote ? `<div class="review">🛡 已改寫可能被抓語病的說法：${esc(d.reviewNote)}</div>` : ''}
       </div>
       <textarea maxlength="500">${esc(d.editedText || d.draftText)}</textarea>
       <div class="count"></div>

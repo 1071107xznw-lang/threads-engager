@@ -61,6 +61,7 @@ export function createStore(dbPath) {
   try { db.exec('ALTER TABLE posts ADD COLUMN targetId TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN topic TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN scheduledAt TEXT'); } catch { /* 已存在 */ }
+  try { db.exec('ALTER TABLE native_drafts ADD COLUMN reviewNote TEXT'); } catch { /* 已存在 */ }
   // 以 targetId 去重的部分唯一索引：徹底封死並發下同一則貼文排成兩列（各回一次）。
   // 允許多個 NULL（並非每則 post 都有 targetId）。既有資料若已有重複則建索引會失敗 → 忽略，仍有應用層去重。
   try {
@@ -163,11 +164,11 @@ export function createStore(dbPath) {
     },
 
     // ── 原生貼文草稿佇列 ──
-    insertNativeDraft({ draftText, angle = null, sourceSummary = null, topic = null }) {
+    insertNativeDraft({ draftText, angle = null, sourceSummary = null, topic = null, reviewNote = null }) {
       const info = db.prepare(`
-        INSERT INTO native_drafts (draftText, angle, sourceSummary, topic, createdAt)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(draftText, angle, sourceSummary, topic || null, new Date().toISOString());
+        INSERT INTO native_drafts (draftText, angle, sourceSummary, topic, reviewNote, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(draftText, angle, sourceSummary, topic || null, reviewNote || null, new Date().toISOString());
       return info.lastInsertRowid;
     },
     listNativeByStatus(status) {

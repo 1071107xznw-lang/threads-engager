@@ -11,3 +11,4 @@ config/argo.json
 !.env.example
 
 .DS_Store
+config/knowledge.md
