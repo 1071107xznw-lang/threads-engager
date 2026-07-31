@@ -36,7 +36,9 @@ npm start          # 開 http://localhost:4321
 
 憑證只存在**你這台電腦**的 `data.db`（已 gitignore），不會上傳、不進 repo。設定完就能用「原生貼文」分頁產稿、審核、發布（預設 `DRY_RUN` 乾跑，狀態列可一鍵切正式）。
 
-> 想分享給別人？把這個 repo 給他，他 `npm install && npm start`、在精靈連自己的帳號即可——**一人一套、各用各的帳號**。
+> 想分享給別人？把這個 repo 給他，他 `npm install && npm start`、在精靈連自己的帳號即可——**一人一套、各用各的帳號**（詳見 [`docs/friend-setup.md`](docs/friend-setup.md)）。
+
+> 📱 **手機/遠端存取**：在 `.env` 設 `DASHBOARD_PASSWORD` 加登入密碼，再走區網 IP 或 Tailscale 連進來——步驟見 [`docs/remote-access.md`](docs/remote-access.md)。埠衝突可設 `PORT`。
 
 ### 進階：用 `.env`（不透過精靈）
 
