@@ -3,7 +3,80 @@ import assert from 'node:assert/strict';
 import {
   buildNativePrompt, parseDrafts, generateDrafts, suggestTopic,
   buildRedTeamPrompt, parseRedTeam, redTeamDraft,
+  assignGoals, POST_GOALS,
 } from '../src/native_ai.mjs';
+
+// ── 成長期：拿「表現最好的」當範本 + 每批分工 + 搜尋字 ──
+test('assignGoals：依配比循環指派，配比壞掉回落預設', () => {
+  assert.deepEqual(assignGoals(3), ['reach', 'engage', 'brand']);
+  assert.deepEqual(assignGoals(4, ['reach', 'engage']), ['reach', 'engage', 'reach', 'engage']);
+  assert.deepEqual(assignGoals(2, ['亂寫', null]), ['reach', 'engage']); // 全無效 → 用全部目標
+  assert.deepEqual(assignGoals(0), []);
+});
+
+test('buildNativePrompt：成效最好的貼文帶數字進 prompt，並要求歸納「為什麼有效」', () => {
+  const p = buildNativePrompt({
+    persona: 'x',
+    topPosts: [{ text: '週五晚上最後一桌', metrics: { views: 5200, likes: 88, replies: 31 } }],
+    n: 1,
+  });
+  assert.match(p, /成效最好的貼文/);
+  assert.match(p, /週五晚上最後一桌/);
+  assert.match(p, /瀏覽 5200/);
+  assert.match(p, /留言 31/);
+  assert.match(p, /不是照抄內容/);
+});
+
+test('buildNativePrompt：沒有成效資料時不出現該段落', () => {
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.doesNotMatch(p, /成效最好的貼文/);
+});
+
+test('buildNativePrompt：分工說明（觸及/互動/品牌）逐則寫清楚', () => {
+  const p = buildNativePrompt({ persona: 'x', goals: ['reach', 'engage', 'brand'], n: 3 });
+  assert.match(p, /第 1 則【觸及型】/);
+  assert.match(p, /第 2 則【互動型】/);
+  assert.match(p, /第 3 則【品牌型】/);
+  assert.match(p, /留言數/);
+  assert.match(p, /"goal"/); // 輸出格式要回填 goal
+});
+
+test('buildNativePrompt：搜尋字當訊號，但明講不要寫成 SEO 文', () => {
+  const p = buildNativePrompt({ persona: 'x', searchTerms: ['台北 電競酒吧', '大安區美食'], n: 1 });
+  assert.match(p, /台北 電競酒吧/);
+  assert.match(p, /SEO/);
+});
+
+test('parseDrafts：AI 有回 goal 就用它，沒回就照位置補', () => {
+  const raw = '[{"text":"一","goal":"engage"},{"text":"二"},{"text":"三","goal":"亂寫"}]';
+  const out = parseDrafts(raw, { goals: ['reach', 'engage', 'brand'] });
+  assert.equal(out[0].goal, 'engage'); // AI 回填優先
+  assert.equal(out[1].goal, 'engage'); // 依位置補
+  assert.equal(out[2].goal, 'brand');  // 無效值 → 依位置補
+  assert.ok(Object.keys(POST_GOALS).includes(out[0].goal));
+});
+
+test('generateDrafts：把 topPosts/searchTerms/分工 都送進 prompt，草稿帶回 goal', async () => {
+  let seen = '';
+  const runner = async (prompt) => {
+    seen = prompt;
+    return '[{"text":"稿一","angle":"a","topic":"t"},{"text":"稿二","angle":"b","topic":"t"}]';
+  };
+  const out = await generateDrafts({
+    persona: 'p',
+    topPosts: [{ text: '爆過的那則', metrics: { views: 900, replies: 12 } }],
+    searchTerms: ['台北酒吧'],
+    goalMix: ['reach', 'engage'],
+    n: 2,
+    runner,
+    redTeam: false,
+  });
+  assert.match(seen, /爆過的那則/);
+  assert.match(seen, /台北酒吧/);
+  assert.match(seen, /第 1 則【觸及型】/);
+  assert.equal(out[0].goal, 'reach');
+  assert.equal(out[1].goal, 'engage');
+});
 
 // ── 語氣人化 + 反商業 + 知識庫接地 ──
 test('buildNativePrompt：含人化寫法、反 AI 腔、反商業腔規則', () => {

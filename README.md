@@ -67,8 +67,10 @@ npm start          # 開 http://localhost:4321
 ### A. 原生貼文（Argo 自己發）
 
 ```
-即時熱搜(Google Trends TW) + 主題新聞(RSS) + 自己近期貼文(語氣樣本) + 品牌知識庫
-      → AI 產草稿 → 🛡 紅隊審稿 → dashboard「原生貼文」分頁 → 你編輯/核准 → 【發布】
+即時熱搜(Google Trends TW) + 主題新聞(RSS) + 自己近期貼文(語氣樣本)
+      + 📊 自家成效前幾名(什麼有效) + 品牌知識庫 + 搜尋字
+    → AI 產草稿(觸及／互動／品牌分工) → 🛡 紅隊審稿
+    → dashboard「原生貼文」分頁 → 你編輯/核准 → 【發布】
 ```
 
 ```bash
@@ -104,6 +106,32 @@ npm run dashboard           # 審核 → 發布（DRY_RUN=1 為乾跑）
 | ✅ 這個設計產出的 | 「台灣的『常溫』對紅酒根本太熱。我們家一律先冰 20 分鐘再上桌——不服的先喝過再來吵」 |
 
 > `config/knowledge.md` 已被 gitignore（是你的店家內容，不會進版本庫）。內容愈具體，AI 愈敢講、也愈不會出包。
+
+### 📊 成長期：拿冠軍當範本，不是拿最新的當範本
+
+只學「最近」的貼文，等於每次都在複製自己的平均值，流量池永遠放大不了。
+所以產稿前會先讀**自己貼文的實際成效**，把表現最好的幾則餵給 AI 當「什麼有效」的實證。
+
+- **排名邏輯**：留言 > 轉發／引用 > 讚 ≫ 瀏覽。瀏覽權重刻意壓到很低——
+  互動率通常只有幾 %，瀏覽數量級大得多，權重給高就會蓋掉互動訊號，
+  變成「5000 瀏覽 2 個讚」贏過「800 瀏覽 30 則留言」。但觸及是結果不是原因，那種貼文不值得模仿。
+- **AI 拿它做什麼**：歸納「為什麼有人看」——鉤子怎麼下、挑什麼主題、寫多長、有沒有丟問題，
+  然後把新稿往那些方向靠。明文要求**不是照抄內容或主題**。
+- **在哪裡看**：dashboard「成效」分頁列出排名與數字，你也能直接判斷什麼有效。
+- **需要權限**：token 要有 `threads_manage_insights`。**沒有也不會壞**——
+  自動略過這個訊號、照常產稿，dashboard 會提示你怎麼補。
+
+**每批草稿的分工**（`goalMix`）：成長期不該三則都在講自己的店，所以每批依序分工——
+
+| 分工 | 目的 | 寫法 |
+|---|---|---|
+| 🚀 `reach` 觸及型 | 讓還沒追蹤你的人看到 | 蹭當下熱搜，不提店也沒關係 |
+| 💬 `engage` 互動型 | 衝留言數（演算法吃互動） | 丟一個超好回答的問題：二選一、幫我決定 |
+| 🏠 `brand` 品牌型 | 建立記憶點 | 專業或店裡日常，有畫面、有內行細節 |
+
+**搜尋字訊號**（`localSearchTerms` + `tags`）：顧客實際用什麼字找到你。
+從 Google 商家檔案「成效 → 搜尋字詞」抄過來即可（成長期資料少很正常，留空也能跑，
+會回落用 `tags`）。AI 只會自然帶上 1～2 個字眼，明文禁止寫成 SEO 文。
 
 **主題（topic_tag）**：dashboard 每張草稿卡片可填一個「主題」（1–50 字、不可含 `.` 或 `&`），
 發布時貼文會歸到該 Threads 話題下。選填。
@@ -209,6 +237,7 @@ Threads API 在 **Development（開發）模式**下有兩個限制，實測確�
    - `threads_basic`（必備）
    - `threads_content_publish`（發文/回覆）
    - `threads_keyword_search`（搜尋別人的公開貼文）
+   - `threads_manage_insights`（讀**自己**貼文的成效，供「成效」分頁與產稿範本用）
    - `threads_manage_replies`（回覆管理，若用到）
 2. **填 App Review**：每個進階權限要說明用途、附操作截圖/螢幕錄影，示範你**如何、為何**呼叫它
    （重點強調：搜尋→AI 產草稿→**人工審核**→才送出，符合平台政策）。
@@ -226,8 +255,11 @@ Threads API 在 **Development（開發）模式**下有兩個限制，實測確�
 | 欄位 | 說明 |
 |---|---|
 | `persona` | 原生貼文的品牌口吻 |
-| `tags` | 站內趨勢搜尋關鍵字（受眾興趣全譜，供 Live 後用） |
+| `tags` | 站內趨勢搜尋關鍵字（受眾興趣全譜，供 Live 後用；同時當產稿的搜尋字訊號） |
 | `useThreadsSearch` | 是否啟用站內趨勢搜尋（Live 前建議 `false`，避免空搜耗額度） |
+| `useInsights` | 是否讀自家貼文成效當產稿範本（預設 `true`；缺權限會自動略過） |
+| `localSearchTerms` | 顧客實際用什麼字找到你（Google 商家檔案「搜尋字詞」抄過來；可留空） |
+| `goalMix` | 每批草稿的分工循環，預設 `["reach","engage","brand"]` |
 | `newsFeeds` / `hotTrendsFeeds` | 主題新聞 RSS / 即時熱搜（Google Trends TW） |
 | `draftsPerRun` | 每次 `generate` 產幾則原生草稿 |
 | `replyPersona` | 回覆別人的口吻（貼題、有梗、不推銷、≤120字） |
@@ -274,14 +306,16 @@ src/
   threads_reply.mjs  送已核准回覆（reply_to_id）+ 每日上限/去重
   threads_search.mjs keyword_search + 7 天額度守門
   trends.mjs         Google Trends 熱搜 + 新聞 RSS
-  native_ai.mjs      原生貼文 AI 產稿（prompt/解析）
+  insights.mjs       自家貼文成效（解析/加權排名，缺權限 fail-open）
+  knowledge.mjs      品牌知識庫載入（config/knowledge.md）
+  native_ai.mjs      原生貼文 AI 產稿（prompt/解析/分工/紅隊審稿）
   native_generate.mjs 原生貼文生產線
   reply_pipeline.mjs 聆聽回覆生產線（搜候選→評分→產草稿）
   ai.mjs             claude -p runner + 回覆評分/產稿
   store.mjs          SQLite（貼文/草稿/token/額度）
   server.mjs         審核 dashboard + API
   *_cli.mjs          verify / publish / exchange / refresh / generate 進入點
-public/              審核 dashboard 前端（原生貼文 / 回覆審核 兩分頁）
+public/              審核 dashboard 前端（原生貼文 / 回覆審核 / 成效 三分頁）
 config/argo.json     品牌與流程設定（無 secrets）
 ```
 

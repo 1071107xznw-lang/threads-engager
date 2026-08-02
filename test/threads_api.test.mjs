@@ -119,3 +119,19 @@ test('exchangeLongLivedToken 帶 client_secret', async () => {
   assert.equal(q.get('client_secret'), 'sec');
   assert.equal(q.get('access_token'), 'shorttok');
 });
+
+test('getMediaInsights 打對端點並帶 metric', async () => {
+  const fetchImpl = fakeFetch(() => ({
+    body: { data: [{ name: 'views', period: 'lifetime', values: [{ value: 42 }] }] },
+  }));
+  const api = createApi({ fetchImpl, appSecret: 'sec' });
+  const res = await api.getMediaInsights({ accessToken: 'tok', mediaId: '999' });
+  assert.equal(res.data[0].values[0].value, 42);
+
+  const { url, init } = fetchImpl.calls[0];
+  assert.equal(init.method, 'GET');
+  assert.match(url, /\/v1\.0\/999\/insights\?/);
+  const q = new URL(url).searchParams;
+  assert.ok(q.get('metric').includes('replies'));
+  assert.equal(q.get('appsecret_proof'), appsecretProof('tok', 'sec'));
+});

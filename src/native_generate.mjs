@@ -4,6 +4,7 @@ import { gatherTagPosts } from './threads_search.mjs';
 import { fetchNewsTitles, fetchTrendingTopics } from './trends.mjs';
 import { generateDrafts } from './native_ai.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
+import { rankOwnPosts, summarizeMetrics } from './insights.mjs';
 
 // 完整生產線：站內趨勢 + 網路趨勢 + 自己貼文 → AI 產稿 → 寫入 native_drafts（status=drafted）。
 // 供 CLI 與 server 端點共用。所有外部相依（api/runner/fetch）皆可注入以利測試。
@@ -19,6 +20,7 @@ export async function runGeneration({
   configDir = null, // 用來找 config/knowledge.md（品牌知識庫）
   knowledge = null, // 可直接注入（測試用）；未給則從 configDir 讀
   redTeam = true,
+  useInsights = brand.useInsights !== false, // 成效回饋（預設開；沒權限會自動略過）
   nowIso = new Date().toISOString(),
   log = console.log,
 }) {
@@ -53,14 +55,37 @@ export async function runGeneration({
   log(`網路趨勢：${newsTitles.length} 則新聞標題`);
 
   // 4) 自己近期貼文（語氣樣本：學說話方式、避免重複主題）
-  let ownPosts = [];
+  let ownRaw = [];
   try {
-    const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 15 });
-    ownPosts = (res.data || []).map((p) => p.text).filter(Boolean);
+    const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 25 });
+    ownRaw = (res.data || []).filter((p) => p && p.text);
   } catch (e) {
     log(`⚠️ 讀取自己貼文失敗（略過）：${e.message}`);
   }
+  const ownPosts = ownRaw.slice(0, 15).map((p) => p.text);
   log(`語氣樣本：自己的 ${ownPosts.length} 則貼文`);
+
+  // 4b) 成效回饋：哪幾則「真的有流量」——拿冠軍當範本，而不是拿最新的當範本。
+  //     需 threads_manage_insights 權限；沒有就 fail-open（少一個訊號，不擋產稿）。
+  let topPosts = [];
+  let insightsAvailable = false;
+  if (!useInsights) {
+    log('成效回饋：已關閉（brand.useInsights = false）');
+  } else if (ownRaw.length) {
+    const ranked = await rankOwnPosts({ api, accessToken, posts: ownRaw, limit: 5, maxFetch: 15, log });
+    insightsAvailable = ranked.available;
+    topPosts = ranked.top;
+    if (insightsAvailable) {
+      const best = topPosts[0];
+      log(`成效回饋：讀到 ${ranked.scored} 則數據${best ? `；表現最好的一則 ${summarizeMetrics(best.metrics)}` : ''}`);
+    }
+  }
+
+  // 4c) 搜尋字訊號：顧客實際用什麼字找我們（localSearchTerms）＋ 我們想被搜到的字（tags）
+  const searchTerms = [...new Set(
+    [...(brand.localSearchTerms || []), ...(brand.tags || [])]
+      .map((t) => String(t).trim()).filter(Boolean)
+  )].slice(0, 25);
 
   // 5) 品牌知識庫（我們敢背書的事實）——AI 只能用肯定句講這裡有的東西
   const kb = knowledge != null
@@ -68,17 +93,24 @@ export async function runGeneration({
     : loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null);
   log(kb ? `知識庫：已載入 ${kb.length} 字` : '知識庫：無（建議建立 config/knowledge.md，讓 AI 敢講你們的專業）');
 
-  // 6) AI 產稿（含紅隊審稿：把會被抓語病的斷言改成站得住的說法）
+  // 6) AI 產稿（含分工配比 + 紅隊審稿：把會被抓語病的斷言改成站得住的說法）
   const drafts = await generateDrafts({
     persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts,
+    topPosts, searchTerms, goalMix: brand.goalMix,
     knowledge: kb, n: brand.draftsPerRun, runner, redTeam, log,
   });
 
   // 7) 寫入審核佇列
-  const sourceSummary = `熱搜 ${hotTrends.length}、新聞 ${newsTitles.length}、站內 ${tagPosts.length}`;
+  const sourceSummary = [
+    `熱搜 ${hotTrends.length}`,
+    `新聞 ${newsTitles.length}`,
+    `站內 ${tagPosts.length}`,
+    insightsAvailable ? `成效範本 ${topPosts.length}` : null,
+  ].filter(Boolean).join('、');
   const ids = drafts.map((d) =>
     store.insertNativeDraft({
-      draftText: d.text, angle: d.angle, sourceSummary, topic: d.topic, reviewNote: d.reviewNote,
+      draftText: d.text, angle: d.angle, sourceSummary,
+      topic: d.topic, reviewNote: d.reviewNote, goal: d.goal,
     })
   );
   const reviewed = drafts.filter((d) => d.reviewNote).length;
@@ -92,6 +124,9 @@ export async function runGeneration({
     ownPosts: ownPosts.length,
     knowledgeChars: kb.length,
     reviewed, // 被紅隊改寫過的則數
+    insightsAvailable, // 有沒有讀到自家成效（false = token 缺 threads_manage_insights）
+    topPosts: topPosts.length,
+    searchTerms: searchTerms.length,
     quotaUsed7d: store.countSearches7d(nowIso),
   };
 }

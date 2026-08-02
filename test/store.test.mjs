@@ -158,3 +158,13 @@ test('search_log 只算 7 天窗內', () => {
   assert.equal(s.countSearches7d(new Date(now).toISOString()), 1);
   s.close();
 });
+
+test('insertNativeDraft 存下分工 goal，listNativeByStatus 帶得出來', () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '衝觸及那則', goal: 'reach' });
+  const row = store.listNativeByStatus('drafted').find((r) => r.id === id);
+  assert.equal(row.goal, 'reach');
+  // 沒指定分工 → null，不影響舊流程（手動撰寫的貼文就是這種）
+  const id2 = store.insertNativeDraft({ draftText: '手寫' });
+  assert.equal(store.getNativeDraft(id2).goal, null);
+});
