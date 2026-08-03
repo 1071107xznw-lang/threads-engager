@@ -108,3 +108,41 @@ test('sendApprovedReplies 受 dailyCap 限制', async () => {
   assert.equal(res.sent, 2);
   store.close();
 });
+
+// ── 留言區 vs 主動留言：兩套送出限制 ──
+test('pickSendable：inbox 不受同作者去重限制（同一人留兩則就該回兩則）', () => {
+  const approved = [
+    { id: 1, author: 'alice', kind: 'inbox' },
+    { id: 2, author: 'alice', kind: 'inbox' },
+  ];
+  const out = pickSendable({ approved, sentToday: 0, dailyCap: 8, recentAuthors: ['alice'] });
+  assert.equal(out.length, 2);
+});
+
+test('pickSendable：outreach 仍受同作者去重與每日上限', () => {
+  const approved = [
+    { id: 1, author: 'alice' },              // 一週內回過 → 擋
+    { id: 2, author: 'bob' },
+    { id: 3, author: 'carol' },
+  ];
+  const out = pickSendable({ approved, sentToday: 7, dailyCap: 8, recentAuthors: ['alice'] });
+  assert.deepEqual(out.map((r) => r.id), [2]); // 只剩 1 個額度，且 alice 被擋
+});
+
+test('pickSendable：outreach 額度用完，inbox 仍可送（不再整批 break）', () => {
+  const approved = [
+    { id: 1, author: 'x' },
+    { id: 2, author: 'y', kind: 'inbox' },
+  ];
+  const out = pickSendable({ approved, sentToday: 8, dailyCap: 8, recentAuthors: [] });
+  assert.deepEqual(out.map((r) => r.id), [2]);
+});
+
+test('pickSendable：inbox 也有自己的每日上限', () => {
+  const approved = [1, 2, 3].map((id) => ({ id, author: `u${id}`, kind: 'inbox' }));
+  const out = pickSendable({
+    approved, sentToday: 0, dailyCap: 8, recentAuthors: [],
+    inboxSentToday: 19, inboxDailyCap: 20,
+  });
+  assert.equal(out.length, 1);
+});

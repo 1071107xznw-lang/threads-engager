@@ -5,15 +5,35 @@ export const SAME_AUTHOR_WINDOW_HOURS = 168;
 const MAX_TEXT_LEN = 500;
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 從已核准清單挑出可送的：受每日上限與同作者去重限制。（純函式，自舊 sender.mjs 搬入）
-export function pickSendable({ approved, sentToday, dailyCap, recentAuthors }) {
+// 從已核准清單挑出可送的。兩種來源、兩套限制：
+//
+// · outreach（主動去別人串下留言）：受每日上限 + 同作者一週去重。
+//   這些限制是為了「不要看起來像騷擾機器人」。
+// · inbox（別人在你自己貼文底下留言）：你是主人，回客人是常態行為，
+//   不套同作者去重（同一人留言兩次本來就該回兩次），改用較寬的 inboxDailyCap。
+//
+// 純函式，自舊 sender.mjs 搬入。
+export function pickSendable({
+  approved, sentToday, dailyCap, recentAuthors,
+  inboxSentToday = 0, inboxDailyCap = 20,
+}) {
   const budget = Math.max(0, dailyCap - sentToday);
+  const inboxBudget = Math.max(0, inboxDailyCap - inboxSentToday);
   const seen = new Set(recentAuthors);
   const out = [];
+  let used = 0;
+  let inboxUsed = 0;
   for (const row of approved) {
-    if (out.length >= budget) break;
+    if (row.kind === 'inbox') {
+      if (inboxUsed >= inboxBudget) continue;
+      inboxUsed += 1;
+      out.push(row);
+      continue;
+    }
+    if (used >= budget) continue; // 額度用完只跳過這則，讓後面的 inbox 仍可送
     if (row.author && seen.has(row.author)) continue;
     if (row.author) seen.add(row.author);
+    used += 1;
     out.push(row);
   }
   return out;
@@ -69,6 +89,7 @@ export async function sendApprovedReplies({
   account,
   api = createApi({ appSecret: settings.appSecret, base: settings.apiBase }),
   dailyCap,
+  inboxDailyCap = 20, // 回自家留言區的每日上限（比 outreach 寬）
   dryRun = settings.dryRun,
   nowIso = new Date().toISOString(),
   sleep = defaultSleep,
@@ -78,10 +99,13 @@ export async function sendApprovedReplies({
   log = console.log,
 }) {
   const approved = store.listByStatus(account, 'approved');
-  const sentToday = store.countSentToday(account, nowIso);
+  const sentToday = store.countSentToday(account, nowIso, 'outreach');
+  const inboxSentToday = store.countSentToday(account, nowIso, 'inbox');
   const sinceIso = new Date(Date.parse(nowIso) - SAME_AUTHOR_WINDOW_HOURS * 3600 * 1000).toISOString();
-  const recentAuthors = store.recentAuthors(account, sinceIso);
-  const sendable = pickSendable({ approved, sentToday, dailyCap, recentAuthors });
+  const recentAuthors = store.recentAuthors(account, sinceIso, 'outreach');
+  const sendable = pickSendable({
+    approved, sentToday, dailyCap, recentAuthors, inboxSentToday, inboxDailyCap,
+  });
 
   let sent = 0;
   let failed = 0;

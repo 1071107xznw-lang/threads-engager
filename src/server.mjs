@@ -12,6 +12,8 @@ import { publishText, validateTopic, validateText } from './threads_publish.mjs'
 import { runGeneration } from './native_generate.mjs';
 import { suggestTopic as nativeSuggestTopic } from './native_ai.mjs';
 import { rankOwnPosts } from './insights.mjs';
+import { scanInbox } from './inbox.mjs';
+import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
 import { sendApprovedReplies, validateReply, parseTargetId } from './threads_reply.mjs';
@@ -89,6 +91,7 @@ export function createServer({
   account, // 單帳號名稱（一實例一帳號）；預設取 accounts[0]
   password, // 選用：設了就用 Basic Auth 保護整個 dashboard
   runScrape,
+  runInboxScan, // 掃自己貼文底下未回覆的留言 → 產草稿
   runSend,
   runGenerate,
   suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
@@ -127,6 +130,8 @@ export function createServer({
       res.json(store.listByStatus(account, status));
     });
     app.post('/api/scrape', wrap((req) => runScrape(req.body.account)));
+    // 💬 留言區：掃自己貼文底下還沒回的留言 → 產草稿（送出仍需人工核准）
+    if (runInboxScan) app.post('/api/inbox/scan', wrap(() => runInboxScan()));
     app.post('/api/send', wrap((req) => runSend(req.body.account)));
     app.post('/api/posts/:id/draft', (req, res) => {
       store.editDraft(Number(req.params.id), req.body.editedText);
@@ -320,11 +325,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const { settings, api, accessToken } = currentAuth();
       return findAndDraft({ settings, brand: currentBrand(), store, accessToken, api, account: ACCOUNT });
     },
+    runInboxScan: () => {
+      const { settings, api, accessToken } = currentAuth();
+      const brand = currentBrand();
+      return scanInbox({
+        api, accessToken, userId: settings.userId, store, account: ACCOUNT, brand,
+        knowledge: loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null),
+      });
+    },
     runSend: () => {
       const { settings, api, accessToken } = currentAuth();
+      const brand = currentBrand();
       return sendApprovedReplies({
         settings, store, accessToken, api, account: ACCOUNT,
-        dailyCap: currentBrand().replyDailyCap, dryRun: dryRunNow(),
+        dailyCap: brand.replyDailyCap, inboxDailyCap: brand.inboxDailyCap,
+        dryRun: dryRunNow(),
       });
     },
     runGenerate: () => {

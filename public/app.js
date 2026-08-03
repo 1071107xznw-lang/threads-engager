@@ -235,7 +235,9 @@ async function loadQueue() {
     <div class="card" data-id="${p.id}">
       <div class="meta">
         <label><input type="checkbox" class="pick" /> 選取</label> ・
-        <span>相關性 ${p.relevanceScore == null ? '—' : Number(p.relevanceScore).toFixed(2)}</span> ・
+        ${p.kind === 'inbox'
+          ? '<span class="goal engage" title="別人在你自己貼文底下的留言">💬 我的留言區</span> ・'
+          : `<span>相關性 ${p.relevanceScore == null ? '—' : Number(p.relevanceScore).toFixed(2)}</span> ・`}
         作者 ${esc(p.author || '（手動指定）')} ・ <a href="${esc(p.threadUrl)}" target="_blank">看原貼文 ↗</a>
       </div>
       <div class="content">${esc(p.content)}</div>
@@ -245,8 +247,12 @@ async function loadQueue() {
         <button class="skip">跳過</button>
       </div>
     </div>`).join('') || (liveMode
-      ? '<p>目前沒有待審草稿。按「搜尋候選串」。</p>'
-      : '<div class="hint">App 目前在 Development 模式，keyword_search 只會回你自己的貼文、搜不到別人的公開串。<br>把 App 送審上 Live 後即可運作（見 README「上 Live」）。</div>');
+      ? '<p>目前沒有待審草稿。按「搜尋候選串」或「掃我的留言區」。</p>'
+      : '<div class="hint">目前沒有待審草稿。<br><br>'
+        + '💬 先按「<strong>掃我的留言區</strong>」——回自己貼文底下的留言<strong>現在就能用</strong>，'
+        + '而且這些人已經對你有興趣。<br><br>'
+        + '🔍「搜尋候選串」（主動去別人的熱門串留言）需要 App 上 Live：'
+        + 'Development 模式下 keyword_search 只會回你自己的貼文（見 README「上 Live」）。</div>');
 }
 
 $('#queue').addEventListener('click', async (e) => {
@@ -278,6 +284,23 @@ $('#scrape').addEventListener('click', async () => {
     await loadQueue();
   } finally {
     $('#scrape').disabled = false;
+  }
+});
+
+$('#inboxScan').addEventListener('click', async () => {
+  $('#inboxScan').disabled = true;
+  $('#rstatus').textContent = '掃留言區中…（讀自己貼文的對話＋AI 產稿，可能數十秒）';
+  try {
+    const r = await api('/api/inbox/scan', { method: 'POST' });
+    if (r.error) { $('#rstatus').textContent = '失敗：' + r.error; }
+    else if (r.reason) { $('#rstatus').textContent = '略過：' + r.reason; }
+    else {
+      $('#rstatus').textContent = `掃了 ${r.posts} 則貼文，找到 ${r.found} 則還沒回的留言`
+        + `（新增 ${r.inserted}、產草稿 ${r.drafted}${r.failed ? `、產稿失敗 ${r.failed}` : ''}）`;
+    }
+    await loadQueue();
+  } finally {
+    $('#inboxScan').disabled = false;
   }
 });
 

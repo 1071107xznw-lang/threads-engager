@@ -168,3 +168,26 @@ test('insertNativeDraft 存下分工 goal，listNativeByStatus 帶得出來', ()
   const id2 = store.insertNativeDraft({ draftText: '手寫' });
   assert.equal(store.getNativeDraft(id2).goal, null);
 });
+
+test('countSentToday / recentAuthors 分得清 inbox 與 outreach', () => {
+  const store = createStore(':memory:');
+  const now = '2026-08-03T12:00:00.000Z';
+  const mk = (targetId, author, kind) => {
+    const { id } = store.upsertPost({
+      account: 'me', threadUrl: `https://x/${targetId}`, author, targetId, kind,
+    });
+    store.markSent(id, now);
+    return id;
+  };
+  mk('t1', 'alice', 'inbox');
+  mk('t2', 'bob', null); // 舊資料沒有 kind → 算 outreach
+
+  assert.equal(store.countSentToday('me', now), 2);
+  assert.equal(store.countSentToday('me', now, 'inbox'), 1);
+  assert.equal(store.countSentToday('me', now, 'outreach'), 1);
+
+  // 同作者去重只看 outreach：回過 alice 的留言，不該封鎖之後回她本人的貼文
+  const authors = store.recentAuthors('me', '2026-08-01T00:00:00.000Z');
+  assert.equal(authors.has('bob'), true);
+  assert.equal(authors.has('alice'), false);
+});

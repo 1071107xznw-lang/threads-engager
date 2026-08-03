@@ -85,6 +85,18 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'GET', `${graph}/${mediaId}/insights?${q}`);
     },
 
+    // 自己某則貼文的整串對話（含別人的留言與自己的回覆，攤平）。
+    // 帶 replied_to 才能判斷「哪些留言我已經回過」；App 為 Development 模式時也能用。
+    async getConversation({
+      accessToken,
+      mediaId,
+      limit = 50,
+      fields = 'id,text,username,permalink,timestamp,replied_to,is_reply',
+    }) {
+      const q = buildQuery(authed(accessToken, { fields, limit }));
+      return request(fetchImpl, 'GET', `${graph}/${mediaId}/conversation?${q}`);
+    },
+
     // 站內關鍵字搜尋（供「趨勢素材」用，非用於回覆別人）。
     async keywordSearch({
       accessToken,

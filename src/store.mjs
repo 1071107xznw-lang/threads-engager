@@ -59,6 +59,9 @@ export function createStore(dbPath) {
   db.exec(SCHEMA);
   // 既有 DB 相容：缺欄位則補上
   try { db.exec('ALTER TABLE posts ADD COLUMN targetId TEXT'); } catch { /* 已存在 */ }
+  // kind：'inbox'＝別人在我自己貼文底下的留言；null/'outreach'＝主動去別人串下留言。
+  // 兩者的送出限制不同（見 threads_reply.pickSendable）。
+  try { db.exec('ALTER TABLE posts ADD COLUMN kind TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN topic TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN scheduledAt TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN reviewNote TEXT'); } catch { /* 已存在 */ }
@@ -84,10 +87,10 @@ export function createStore(dbPath) {
       }
       if (existing) return { id: existing.id, inserted: false };
       const info = db.prepare(`
-        INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, targetId, discoveredAt)
-        VALUES (@account, @threadUrl, @author, @content, @likes, @postedAt, @targetId, @discoveredAt)
+        INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, targetId, kind, discoveredAt)
+        VALUES (@account, @threadUrl, @author, @content, @likes, @postedAt, @targetId, @kind, @discoveredAt)
       `).run({
-        author: null, content: null, likes: 0, postedAt: null, targetId: null,
+        author: null, content: null, likes: 0, postedAt: null, targetId: null, kind: null,
         ...p,
         discoveredAt: new Date().toISOString(),
       });
@@ -133,17 +136,25 @@ export function createStore(dbPath) {
         ORDER BY p.relevanceScore DESC, p.discoveredAt DESC
       `).all(account, status);
     },
-    countSentToday(account, nowIso) {
+    // kind 省略＝全部；'inbox'＝回自家留言；'outreach'＝主動留言（含舊資料的 NULL）。
+    countSentToday(account, nowIso, kind = null) {
       const day = nowIso.slice(0, 10);
-      return db.prepare(`
-        SELECT COUNT(*) AS n FROM posts
-        WHERE account=? AND status='sent' AND substr(sentAt,1,10)=?
-      `).get(account, day).n;
+      const base = "SELECT COUNT(*) AS n FROM posts WHERE account=? AND status='sent' AND substr(sentAt,1,10)=?";
+      if (kind === 'inbox') {
+        return db.prepare(`${base} AND kind='inbox'`).get(account, day).n;
+      }
+      if (kind === 'outreach') {
+        return db.prepare(`${base} AND (kind IS NULL OR kind<>'inbox')`).get(account, day).n;
+      }
+      return db.prepare(base).get(account, day).n;
     },
-    recentAuthors(account, sinceIso) {
+    // 同作者去重只針對「主動去別人串下留言」。回自家留言區不算——
+    // 否則回過某人的留言，就會連帶封鎖一週內對他本人貼文的回覆。
+    recentAuthors(account, sinceIso, kind = 'outreach') {
+      const extra = kind === 'outreach' ? "AND (kind IS NULL OR kind<>'inbox')" : '';
       const rows = db.prepare(`
         SELECT DISTINCT author FROM posts
-        WHERE account=? AND status='sent' AND sentAt >= ?
+        WHERE account=? AND status='sent' AND sentAt >= ? ${extra}
       `).all(account, sinceIso);
       return new Set(rows.map((r) => r.author));
     },
