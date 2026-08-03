@@ -11,6 +11,7 @@ import { getActiveToken } from './threads_token.mjs';
 import { publishText, validateTopic, validateText } from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
 import { suggestTopic as nativeSuggestTopic } from './native_ai.mjs';
+import { rankOwnPosts } from './insights.mjs';
 import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
 import { sendApprovedReplies, validateReply, parseTargetId } from './threads_reply.mjs';
@@ -91,6 +92,7 @@ export function createServer({
   runSend,
   runGenerate,
   suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
+  topInsights, // 自家貼文成效排名：() => Promise<{available, top, reason}>
   publishDraft,
 }) {
   const app = express();
@@ -197,6 +199,12 @@ export function createServer({
       store.setStatus(Number(req.params.id), 'skipped');
       res.json({ ok: true });
     });
+
+    // 自家貼文成效排名：看「哪幾則真的有流量」。需 threads_manage_insights 權限，
+    // 沒有就回 available:false + 原因，前端顯示提示而非報錯。
+    if (topInsights) {
+      app.get('/api/insights/top', wrap(() => topInsights()));
+    }
 
     // 原生貼文 產稿→審核→發布
     app.post('/api/native/generate', wrap(() => runGenerate()));
@@ -324,6 +332,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       return runGeneration({ settings, brand: currentBrand(), store, accessToken, api, configDir });
     },
     suggestTopic: ({ text }) => nativeSuggestTopic({ text, persona: currentBrand().persona }),
+    topInsights: async () => {
+      const { settings, api, accessToken } = currentAuth();
+      const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 25 });
+      const posts = (res.data || []).filter((p) => p && p.text);
+      return rankOwnPosts({ api, accessToken, posts, limit: 10, maxFetch: 15 });
+    },
     publishDraft: makePublishDraft({
       store,
       publish: ({ text, topic }) => {

@@ -12,13 +12,28 @@ async function api(path, opts) {
   return res.json();
 }
 
+// 每則草稿的任務分工（成長期：觸及 / 互動 / 品牌各一則）
+const GOALS = {
+  reach: { label: '🚀 觸及', title: '蹭熱搜、寫給還沒追蹤你的人看' },
+  engage: { label: '💬 互動', title: '目標是留言數：丟一個超好回答的問題' },
+  brand: { label: '🏠 品牌', title: '講專業或店裡日常，建立記憶點' },
+};
+const goalBadge = (g) => (GOALS[g]
+  ? `<span class="goal ${g}" title="${esc(GOALS[g].title)}">${esc(GOALS[g].label)}</span>`
+  : '');
+
 // ── 分頁切換 ──
+let insightsLoaded = false; // 成效要打不少 API，改成「切到那頁才讀」
 document.querySelectorAll('.tab').forEach((t) => {
   t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
     document.querySelectorAll('section').forEach((x) => x.classList.remove('active'));
     t.classList.add('active');
     $('#' + t.dataset.tab).classList.add('active');
+    if (t.dataset.tab === 'insights' && !insightsLoaded) {
+      insightsLoaded = true;
+      loadInsights();
+    }
   });
 });
 
@@ -63,7 +78,7 @@ async function loadNativeDrafted() {
     <div class="card" data-id="${d.id}">
       <div class="meta">
         ${d.angle ? `<span class="angle">${esc(d.angle)}</span> ・ ` : ''}
-        <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>
+        <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>${goalBadge(d.goal)}
         ${d.reviewNote ? `<div class="review">🛡 已改寫可能被抓語病的說法：${esc(d.reviewNote)}</div>` : ''}
       </div>
       <textarea maxlength="500">${esc(d.editedText || d.draftText)}</textarea>
@@ -88,7 +103,7 @@ async function loadNativeApproved() {
   const drafts = await api('/api/native/drafts?status=approved');
   $('#napproved').innerHTML = drafts.map((d) => `
     <div class="card" data-id="${d.id}">
-      <div class="meta">#${d.id} ・ ${d.scheduledAt ? '⏰ 排程 ' + esc(fmt(d.scheduledAt)) : '已核准'}${d.topic ? ' ・ 主題：' + esc(d.topic) : ''}</div>
+      <div class="meta">#${d.id} ・ ${d.scheduledAt ? '⏰ 排程 ' + esc(fmt(d.scheduledAt)) : '已核准'}${d.topic ? ' ・ 主題：' + esc(d.topic) : ''}${goalBadge(d.goal)}</div>
       <div class="content">${esc(d.editedText || d.draftText)}</div>
       <div class="actions">
         <button class="danger publish">${d.scheduledAt ? '立即發布' : '發布'}</button>
@@ -112,7 +127,11 @@ $('#gen').addEventListener('click', async () => {
   try {
     const r = await api('/api/native/generate', { method: 'POST' });
     if (r.error) { $('#nstatus').textContent = '失敗：' + r.error; }
-    else { $('#nstatus').textContent = `產生 ${r.generated} 則（熱搜 ${r.hotTrends}、新聞 ${r.newsTitles}、站內 ${r.tagPosts}；額度 ${r.quotaUsed7d}）`; }
+    else {
+      const bits = [`熱搜 ${r.hotTrends}`, `新聞 ${r.newsTitles}`, `站內 ${r.tagPosts}`];
+      bits.push(r.insightsAvailable ? `成效範本 ${r.topPosts}` : '成效範本 ✗');
+      $('#nstatus').textContent = `產生 ${r.generated} 則（${bits.join('、')}；額度 ${r.quotaUsed7d}）`;
+    }
     await loadNativeDrafted();
   } finally {
     $('#gen').disabled = false;
@@ -322,6 +341,53 @@ $('#approveSelected').addEventListener('click', async () => {
   } finally {
     $('#approveSelected').disabled = false;
   }
+});
+
+// ── 成效：自己哪幾則貼文真的有流量 ──
+const metricRow = (m = {}) => {
+  const spread = (m.reposts || 0) + (m.quotes || 0) + (m.shares || 0);
+  return [
+    `瀏覽 <b>${m.views || 0}</b>`,
+    `讚 <b>${m.likes || 0}</b>`,
+    `留言 <b>${m.replies || 0}</b>`,
+    `轉發/引用 <b>${spread}</b>`,
+  ].join('　·　');
+};
+
+async function loadInsights() {
+  const box = $('#insightsList');
+  box.innerHTML = '<p>讀取中…</p>';
+  const r = await api('/api/insights/top');
+  if (r.error) { box.innerHTML = `<p>讀取失敗：${esc(r.error)}</p>`; return; }
+  if (!r.available) {
+    box.innerHTML = `
+      <div class="hint">
+        <strong>讀不到成效數據。</strong>最常見的原因是 token 缺少
+        <code>threads_manage_insights</code> 權限——到 Meta 開發者後台重新產一組
+        （多勾這一項），再用「切換帳號」重新連接即可。<br>
+        ${r.reason ? `<br><span class="status">API 回應：${esc(r.reason)}</span>` : ''}
+      </div>`;
+    return;
+  }
+  if (!r.top.length) { box.innerHTML = '<p>還沒有可排名的貼文。發幾則之後再回來看。</p>'; return; }
+  box.innerHTML = r.top.map((p, i) => `
+    <div class="card">
+      <div class="meta">
+        <span class="rank">#${i + 1}</span>
+        ${p.timestamp ? esc(fmt(p.timestamp)) : ''}
+        ${p.permalink ? ` ・ <a href="${esc(p.permalink)}" target="_blank" rel="noopener">看貼文</a>` : ''}
+      </div>
+      <div class="content">${esc(String(p.text).slice(0, 300))}</div>
+      <div class="metrics">${metricRow(p.metrics)}</div>
+    </div>`).join('');
+}
+
+$('#refreshInsights').addEventListener('click', async () => {
+  const btn = $('#refreshInsights');
+  btn.disabled = true;
+  $('#istatus').textContent = '讀取中…（每則貼文一次 API 呼叫）';
+  try { await loadInsights(); $('#istatus').textContent = ''; }
+  finally { btn.disabled = false; }
 });
 
 // ── 切換帳號（一次一帳號：登出目前帳號 → 回設定精靈連下一個）──

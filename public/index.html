@@ -37,6 +37,13 @@
     .statusbar a { color: #0a66c2; }
     .hint { background: #f0f7ff; border: 1px solid #cfe3ff; color: #234; padding: 12px 14px; border-radius: 10px; font-size: 14px; margin: 12px 0; }
     .review { margin-top: 6px; background: #fff8e6; border: 1px solid #ffe0a3; color: #6b4e00; padding: 6px 10px; border-radius: 8px; font-size: 12.5px; }
+    .goal { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
+    .goal.reach { background: #e8f1ff; color: #0a4b9c; border: 1px solid #c6ddff; }
+    .goal.engage { background: #e9f7ec; color: #136b2b; border: 1px solid #c3e8ce; }
+    .goal.brand { background: #f5ecff; color: #5a2ca0; border: 1px solid #e0ccff; }
+    .rank { font-weight: 700; color: #999; margin-right: 6px; }
+    .metrics { font-size: 13px; color: #333; margin-top: 8px; }
+    .metrics b { color: #1c1c1e; }
     h3 { margin: 24px 0 4px; }
   </style>
 </head>
@@ -51,6 +58,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="native">原生貼文</button>
     <button class="tab" data-tab="reply">回覆審核</button>
+    <button class="tab" data-tab="insights">成效</button>
   </div>
 
   <!-- 原生貼文：產稿 → 審核 → 發布 -->
@@ -108,6 +116,20 @@
       <span id="bulkStatus" class="status"></span>
     </div>
     <div id="queue"></div>
+  </section>
+
+  <!-- 成效：自己哪幾則貼文真的有流量（AI 產稿會拿前幾名當範本） -->
+  <section id="insights">
+    <div class="bar">
+      <button id="refreshInsights" class="primary">重新讀取成效</button>
+      <span id="istatus" class="status"></span>
+    </div>
+    <div class="hint">
+      這裡是<strong>你自己的貼文</strong>依互動加權排名。產草稿時會把前幾名餵給 AI 當「什麼有效」的範本，
+      所以這份排名愈準，產出的稿愈會往有流量的方向長。<br>
+      權重：留言 &gt; 轉發／引用 &gt; 讚 &gt; 瀏覽——因為留言最能把貼文推出去。
+    </div>
+    <div id="insightsList"></div>
   </section>
 
   <script src="/app.js"></script>

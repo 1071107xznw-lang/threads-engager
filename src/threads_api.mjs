@@ -74,6 +74,17 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'GET', `${graph}/${userId}/threads?${q}`);
     },
 
+    // 單則自己貼文的成效（瀏覽/按讚/留言/轉發…）。需 threads_manage_insights 權限；
+    // token 沒這個權限時會回 API 錯誤，由上層 fail-open 處理（不擋產稿）。
+    async getMediaInsights({
+      accessToken,
+      mediaId,
+      metrics = 'views,likes,replies,reposts,quotes,shares',
+    }) {
+      const q = buildQuery(authed(accessToken, { metric: metrics }));
+      return request(fetchImpl, 'GET', `${graph}/${mediaId}/insights?${q}`);
+    },
+
     // 站內關鍵字搜尋（供「趨勢素材」用，非用於回覆別人）。
     async keywordSearch({
       accessToken,

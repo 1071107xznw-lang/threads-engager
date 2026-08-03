@@ -10,6 +10,15 @@ export const DEFAULT_BRAND = {
   // 站內 keyword_search：App 在 Development 模式時只會回自己帳號的貼文，
   // 拿不到別人的公開趨勢還會消耗額度，故預設關閉；App 通過審核上 Live 後改 true。
   useThreadsSearch: false,
+  // 成效回饋：讀自己貼文的數據，拿「表現最好的」當產稿範本（而不是拿「最新的」）。
+  // 需要 token 具備 threads_manage_insights；沒有權限會自動略過、不擋產稿。
+  useInsights: true,
+  // 顧客實際用什麼字找到你（例：Google 商家檔案「成效 → 搜尋字詞」抄過來）。
+  // 成長期資料少很正常，先留空也可以；有幾個就填幾個。
+  localSearchTerms: [],
+  // 每批草稿的任務分工，依序循環套用。成長期建議「觸及 → 互動 → 品牌」各一，
+  // 不要三則都在講自己的店。可選值：reach（蹭熱搜衝觸及）、engage（誘留言）、brand（品牌記憶點）。
+  goalMix: ['reach', 'engage', 'brand'],
   draftsPerRun: 3,
   perTagPosts: 8,
   searchCap7d: 400,

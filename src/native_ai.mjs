@@ -1,9 +1,41 @@
 import { defaultRunner } from './ai.mjs';
 import { sanitizeTopic } from './threads_publish.mjs';
+import { summarizeMetrics } from './insights.mjs';
 
-// 依品牌人設 + 知識庫 + 趨勢素材，組出「產生原生貼文草稿」的繁中 prompt。
+// 每則草稿的任務分工。成長期要的是「被更多沒追蹤你的人看到」+「有人留言」，
+// 所以預設一批裡觸及型、互動型、品牌型各一，不要三則都在講自己的店。
+export const POST_GOALS = {
+  reach: {
+    label: '觸及型',
+    brief: '蹭當下熱搜/時勢，寫給「還沒追蹤我們的人」看。'
+      + '不需要提到店也沒關係，重點是讓路過的人看得懂、想轉發。',
+  },
+  engage: {
+    label: '互動型',
+    brief: '目標是「留言數」。丟一個超好回答的問題：二選一、幫我決定、你們都怎麼做、最不能接受哪一種。'
+      + '問題要具體到讓人一秒有答案，不要問「你覺得呢？」這種空問題。',
+  },
+  brand: {
+    label: '品牌型',
+    brief: '講我們的專業、店裡的日常或在地觀察，建立記憶點。'
+      + '要有畫面或有內行細節，不是宣傳文。',
+  },
+};
+
+// 依配比為 n 則草稿指派目標（配比不足就循環）。
+export function assignGoals(n, mix = ['reach', 'engage', 'brand']) {
+  const valid = (Array.isArray(mix) ? mix : []).filter((k) => k in POST_GOALS);
+  const use = valid.length ? valid : Object.keys(POST_GOALS);
+  return Array.from({ length: Math.max(0, n) }, (_, i) => use[i % use.length]);
+}
+
+// 依品牌人設 + 知識庫 + 趨勢素材 + 自家成效，組出「產生原生貼文草稿」的繁中 prompt。
 export function buildNativePrompt({
-  persona, hotTrends = [], newsTitles = [], tagPosts = [], ownPosts = [], knowledge = '', n = 3,
+  persona, hotTrends = [], newsTitles = [], tagPosts = [], ownPosts = [],
+  topPosts = [],      // 自己成效最好的貼文（含 metrics）——學「什麼有效」
+  searchTerms = [],   // 大家用什麼字找我們／我們想被搜到的字
+  goals = [],         // 每則的任務分工（assignGoals 產生）
+  knowledge = '', n = 3,
 }) {
   const lines = [];
   lines.push(`人設：${persona}`);
@@ -46,6 +78,35 @@ export function buildNativePrompt({
     lines.push('  目標是「同一個人寫的」，不是「寫得很好」。也要避免重複已經發過的主題。');
     lines.push('');
   }
+  if (topPosts.length) {
+    lines.push('【我們自己成效最好的貼文——這幾則是真的有流量的，請研究它們為什麼有效】');
+    topPosts.slice(0, 5).forEach((p, i) => {
+      lines.push(`${i + 1}.（${summarizeMetrics(p.metrics || {})}）${String(p.text || '').slice(0, 200)}`);
+    });
+    lines.push('');
+    lines.push('※ 這是「什麼有效」的實證，不是語氣範本。請歸納：第一行的鉤子怎麼下、挑什麼主題、');
+    lines.push('  寫多長、有沒有丟問題、情緒是什麼——然後把這批新稿往這些方向靠。');
+    lines.push('  是複製「為什麼有人看」，不是照抄內容或主題。');
+    lines.push('');
+  }
+  if (searchTerms.length) {
+    lines.push('【大家都用這些字找我們／我們想被搜到的字】');
+    lines.push(searchTerms.slice(0, 25).join('、'));
+    lines.push('');
+    lines.push('※ 自然用上其中 1～2 個字眼就好。不要硬塞、不要列清單、不要寫成 SEO 文。');
+    lines.push('');
+  }
+
+  if (goals.length) {
+    lines.push(`## 這批 ${n} 則的分工（每則任務不同，不要三則都在講自己的店）`);
+    goals.slice(0, n).forEach((key, i) => {
+      const g = POST_GOALS[key];
+      if (g) lines.push(`- 第 ${i + 1} 則【${g.label}】：${g.brief}`);
+    });
+    lines.push('');
+    lines.push('※ 請照這個順序輸出，並在每則的 goal 欄位回填對應代號（reach／engage／brand）。');
+    lines.push('');
+  }
 
   lines.push('## 怎麼寫（Threads 上真的有人看的寫法）');
   lines.push('- **第一行就是鉤子**：Threads 會折疊，第一行決定別人要不要展開。');
@@ -61,7 +122,7 @@ export function buildNativePrompt({
   lines.push('- **AI 腔**：罐頭金句、「在這個◯◯的時代」、「不僅…更是…」、排比堆疊、');
   lines.push('  萬用形容詞（完美/絕佳/獨特/難忘的體驗）、每句都工整。寧可口語、隨性、有點不完美。');
   lines.push('- **商業腔**：宣傳語、優惠推銷、「歡迎來店裡坐坐」「立即預約」這類 CTA 結尾。');
-  lines.push(`  ${n} 則裡最多 1 則可以自然帶到店，而且店要當背景、不是主角。`);
+  lines.push(`  ${n} 則裡最多 1 則（就是品牌型那則）可以自然帶到店，而且店要當背景、不是主角。`);
   lines.push('- **會被抓語病的權威斷言**：酒的適飲溫度、產地年份、法規、健康營養、歷史典故等，');
   lines.push('  知識庫沒寫就不准用「就是要…」「正確做法是…」的口氣。改成自家做法或偏好。');
   lines.push('- 蹭政治、災難、意外、悲劇、八卦爭議——寧可不蹭。');
@@ -72,28 +133,34 @@ export function buildNativePrompt({
   lines.push('- 為每則建議「一個」最貼切的 Threads 主題(topic)：1 個簡短詞或詞組、≤20 字、');
   lines.push('  貼近該則內容、用貼文的語言、**不含句點/&/# 等符號**；想不到合適的就給空字串。');
   lines.push('');
-  lines.push(`只輸出一個 JSON 陣列，長度 ${n}，格式：[{"text":"貼文內容","angle":"切入點","topic":"主題"}]，不要其他文字。`);
+  lines.push(
+    `只輸出一個 JSON 陣列，長度 ${n}，格式：`
+    + '[{"text":"貼文內容","angle":"切入點","topic":"主題","goal":"reach/engage/brand"}]，不要其他文字。'
+  );
   return lines.join('\n');
 }
 
 // 解析 AI 輸出的 JSON 陣列，過濾無效/超長草稿。
-export function parseDrafts(raw, { maxLen = 500 } = {}) {
+// goals：這批指派的分工，用來在 AI 沒回填 goal 時依位置補上。
+export function parseDrafts(raw, { maxLen = 500, goals = [] } = {}) {
   const start = raw.indexOf('[');
   const end = raw.lastIndexOf(']');
   if (start === -1 || end === -1) throw new Error('AI 輸出找不到 JSON 陣列');
   const arr = JSON.parse(raw.slice(start, end + 1));
   if (!Array.isArray(arr)) throw new Error('AI 輸出不是 JSON 陣列');
   const out = [];
-  for (const item of arr) {
-    if (!item || typeof item.text !== 'string') continue;
+  arr.forEach((item, i) => {
+    if (!item || typeof item.text !== 'string') return;
     const text = item.text.trim();
-    if (!text || [...text].length > maxLen) continue;
+    if (!text || [...text].length > maxLen) return;
+    const echoed = typeof item.goal === 'string' ? item.goal.trim().toLowerCase() : '';
     out.push({
       text,
       angle: typeof item.angle === 'string' ? item.angle.trim() : null,
       topic: sanitizeTopic(item.topic), // AI 建議的主題（整理過；無效則 null）
+      goal: (echoed in POST_GOALS) ? echoed : (goals[i] || null), // 分工：AI 回填優先，否則照位置
     });
-  }
+  });
   if (!out.length) throw new Error('AI 未產出有效草稿');
   return out;
 }
@@ -183,15 +250,22 @@ export async function generateDrafts({
   newsTitles,
   tagPosts,
   ownPosts,
+  topPosts = [],    // 自己成效最好的貼文（學「什麼有效」）
+  searchTerms = [], // 在地／品牌搜尋字
+  goalMix,          // 這批的分工配比，如 ['reach','engage','brand']
   knowledge = '',
   n = 3,
   runner = defaultRunner,
   redTeam = true, // 產完再跑一次紅隊審稿（可關閉以省一次 AI 呼叫）
   log = () => {},
 }) {
-  const prompt = buildNativePrompt({ persona, hotTrends, newsTitles, tagPosts, ownPosts, knowledge, n });
+  const goals = assignGoals(n, goalMix);
+  const prompt = buildNativePrompt({
+    persona, hotTrends, newsTitles, tagPosts, ownPosts,
+    topPosts, searchTerms, goals, knowledge, n,
+  });
   const raw = await runner(prompt);
-  const drafts = parseDrafts(raw); // 每則含 { text, angle, topic }
+  const drafts = parseDrafts(raw, { goals }); // 每則含 { text, angle, topic, goal }
   if (!redTeam) return drafts.map((d) => ({ ...d, reviewNote: '' }));
 
   const reviewed = [];
