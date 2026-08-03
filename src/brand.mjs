@@ -30,7 +30,11 @@ export const DEFAULT_BRAND = {
     '你代表這個品牌，路過別人的公開貼文留一則回覆。語氣友善、貼題、有梗或有共鳴、' +
     '像真人隨口留言，≤120 字，不推銷、不放連結、不用 hashtag、不硬提自己。',
   replyThreshold: 0.6, // AI 相關性分數門檻，未過不產草稿
-  replyDailyCap: 8, // 每日送出回覆上限
+  replyDailyCap: 8, // 每日「主動去別人串下留言」上限
+  // 💬 留言區（別人在你自己貼文底下留言）：回客人是主人的常態行為，
+  // 不套同作者去重，上限也比 outreach 寬。
+  inboxDailyCap: 20,
+  inboxPerRun: 15, // 一輪最多為幾則未回留言產草稿
   replyPerRun: 15, // 每次搜尋最多對幾則新候選產草稿
   replyTags: [], // 回覆專用的聚焦 tag（比 tags 精簡，省額度）
 };
