@@ -32,6 +32,33 @@ test('buildNativePrompt：沒有成效資料時不出現該段落', () => {
   assert.doesNotMatch(p, /成效最好的貼文/);
 });
 
+test('buildNativePrompt：冠軍貼文要帶日期（才知道哪些是舊的）', () => {
+  const p = buildNativePrompt({
+    persona: 'x',
+    topPosts: [{ text: '很久以前那則', timestamp: '2026-01-15T10:00:00+0000', metrics: { views: 900 } }],
+    n: 1,
+  });
+  assert.match(p, /2026-01-15｜瀏覽 900/);
+});
+
+test('buildNativePrompt：最新＋冠軍並存時，明講衝突聽誰的', () => {
+  const p = buildNativePrompt({
+    persona: 'x',
+    ownPosts: ['最近的'],
+    topPosts: [{ text: '舊冠軍', metrics: { views: 900 } }],
+    n: 1,
+  });
+  assert.match(p, /語氣聽最近的，寫法聽成效好的/);
+  assert.match(p, /不要把舊主題、舊活動、舊檔期搬回來/);
+});
+
+test('buildNativePrompt：只有其中一份時不出現分工說明（沒東西可衝突）', () => {
+  const onlyRecent = buildNativePrompt({ persona: 'x', ownPosts: ['最近的'], n: 1 });
+  assert.doesNotMatch(onlyRecent, /語氣聽最近的/);
+  const onlyTop = buildNativePrompt({ persona: 'x', topPosts: [{ text: 'a', metrics: {} }], n: 1 });
+  assert.doesNotMatch(onlyTop, /語氣聽最近的/);
+});
+
 test('buildNativePrompt：分工說明（觸及/互動/品牌）逐則寫清楚', () => {
   const p = buildNativePrompt({ persona: 'x', goals: ['reach', 'engage', 'brand'], n: 3 });
   assert.match(p, /第 1 則【觸及型】/);

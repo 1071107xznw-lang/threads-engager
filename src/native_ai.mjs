@@ -81,12 +81,24 @@ export function buildNativePrompt({
   if (topPosts.length) {
     lines.push('【我們自己成效最好的貼文——這幾則是真的有流量的，請研究它們為什麼有效】');
     topPosts.slice(0, 5).forEach((p, i) => {
-      lines.push(`${i + 1}.（${summarizeMetrics(p.metrics || {})}）${String(p.text || '').slice(0, 200)}`);
+      // 帶日期：冠軍可能是很久以前的，AI 要知道哪些是舊的，才不會把舊主題搬回來
+      const when = p.timestamp ? `${String(p.timestamp).slice(0, 10)}｜` : '';
+      lines.push(`${i + 1}.（${when}${summarizeMetrics(p.metrics || {})}）${String(p.text || '').slice(0, 200)}`);
     });
     lines.push('');
     lines.push('※ 這是「什麼有效」的實證，不是語氣範本。請歸納：第一行的鉤子怎麼下、挑什麼主題、');
     lines.push('  寫多長、有沒有丟問題、情緒是什麼——然後把這批新稿往這些方向靠。');
     lines.push('  是複製「為什麼有人看」，不是照抄內容或主題。');
+    lines.push('');
+  }
+  // 兩份自家範本並存時，明講各自負責什麼、衝突聽誰的——否則 AI 會把舊冠軍的主題搬回來。
+  if (ownPosts.length && topPosts.length) {
+    lines.push('※ 上面兩份「我們自己的貼文」分工不同，不要搞混：');
+    lines.push('  ·【最近的貼文】＝**現在的語氣與方向**。用字、句長、emoji 與斷行習慣、');
+    lines.push('    現在在講什麼題材，一律以這份為準。');
+    lines.push('  ·【成效最好的】＝**什麼寫法有效**。鉤子怎麼下、結構、要不要丟問題，學這份。');
+    lines.push('  · 兩者衝突時：**語氣聽最近的，寫法聽成效好的**。');
+    lines.push('  · 成效好的那幾則若日期較舊，只借它的寫法——**不要把舊主題、舊活動、舊檔期搬回來**。');
     lines.push('');
   }
   if (searchTerms.length) {
