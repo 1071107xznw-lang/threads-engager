@@ -14,6 +14,13 @@ export function isClaudeAvailable(force = false) {
   return _claudeAvailable;
 }
 
+// 判斷 claude CLI 的錯誤是不是「登入失效」。
+// 這類錯誤跟一般失敗要分開處理：使用者要做的是重新登入，不是改內容或重試。
+export function isAuthFailure(message) {
+  return /Failed to authenticate|OAuth|401|token has been revoked|not logged in|Invalid API key|please run .?claude/i
+    .test(String(message ?? ''));
+}
+
 export function buildPrompt(post, persona) {
   return [
     `人設：${persona}`,
@@ -56,8 +63,17 @@ export function defaultRunner(prompt) {
     child.on('close', (code) => {
       const out = Buffer.concat(outChunks).toString('utf8');
       const err = Buffer.concat(errChunks).toString('utf8');
-      if (code === 0) resolve(out);
-      else reject(new Error(`claude -p 失敗（exit ${code}）：${err.trim() || out.trim() || '無輸出'}`));
+      if (code === 0) { resolve(out); return; }
+      const detail = err.trim() || out.trim() || '無輸出';
+      // 登入失效跟一般錯誤要分開講：`claude --version` 在 token 被撤銷時仍會成功，
+      // 所以偵測不到，只有真的呼叫才會爆。訊息要直接告訴使用者怎麼修。
+      const e = new Error(
+        isAuthFailure(detail)
+          ? `claude CLI 需要重新登入（token 已失效）。在終端機執行 \`claude\` 登入後再試一次。\n原始錯誤：${detail}`
+          : `claude -p 失敗（exit ${code}）：${detail}`
+      );
+      if (isAuthFailure(detail)) e.authError = true;
+      reject(e);
     });
   });
 }

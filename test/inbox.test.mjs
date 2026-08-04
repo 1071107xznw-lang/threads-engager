@@ -209,3 +209,30 @@ test('buildInboxPrompt：一律禁止編營業細節與做不到的承諾', () =
   //    先前把這種情況誤判成編造，差點讓使用者刪掉正確的回覆。
   assert.match(p, /原貼文或知識庫\*\*真的寫到\*\*的可以用/);
 });
+
+test('buildInboxPrompt：被內行人講到沒把握的專業題目 → 不裝專家、把話丟回去', () => {
+  const p = buildInboxPrompt({ reply: { username: 'a', text: '紅酒適飲溫度18度以下吧' } });
+  assert.match(p, /不要裝專家/);
+  assert.match(p, /也不要硬掰/);
+  assert.match(p, /把話丟回去/);
+});
+
+test('scanInbox：全部產稿都失敗時，回報真正的原因（例如要重新登入）', async () => {
+  const store = createStore(':memory:');
+  const api = {
+    async getProfile() { return { username: ME }; },
+    async listOwnPosts() { return { data: [{ id: 'p1', text: '貼文' }] }; },
+    async getConversation() {
+      return { data: [{ id: 'r1', username: 'alice', text: '留言', permalink: 'https://x/1' }] };
+    },
+  };
+  const logs = [];
+  const r = await scanInbox({
+    api, accessToken: 't', userId: '1', store, account: 'me', brand: {},
+    runner: async () => { throw new Error('claude CLI 需要重新登入（token 已失效）。'); },
+    log: (m) => logs.push(m),
+  });
+  assert.equal(r.drafted, 0);
+  assert.match(r.reason, /重新登入/);
+  assert.ok(logs.some((l) => /所有回覆都產不出來/.test(l)));
+});

@@ -8,6 +8,7 @@ import { defaultRunner } from './ai.mjs';
 import { sanitizeTopic } from './threads_publish.mjs';
 import { summarizeMetrics } from './insights.mjs';
 import { redTeamDraft } from './native_ai.mjs';
+import { LEGAL_RULES } from './compliance.mjs';
 
 export function buildPolishPrompt({
   text, persona = '', hotTrends = [], ownPosts = [], topPosts = [], knowledge = '',
@@ -64,6 +65,8 @@ export function buildPolishPrompt({
   lines.push('5. **熱度**：只有**自然接得上**才把原稿連到某個熱搜；硬凹會很尷尬，接不上就不要接，');
   lines.push('   並在 trend 欄位回空字串。政治、災難、意外、悲劇、八卦一律不蹭。');
   lines.push('6. **主題**：建議一個 Threads 主題（≤20 字、不含句點/&/#；想不到就空字串）。');
+  lines.push('');
+  lines.push(LEGAL_RULES);
   lines.push('');
   lines.push('## 絕對不要');
   lines.push('- **改掉作者的原意、立場或他想講的資訊**。這是他的文，你只是幫他磨。');

@@ -1,6 +1,7 @@
 import { defaultRunner } from './ai.mjs';
 import { sanitizeTopic } from './threads_publish.mjs';
 import { summarizeMetrics } from './insights.mjs';
+import { LEGAL_RULES } from './compliance.mjs';
 
 // 每則草稿的任務分工。成長期要的是「被更多沒追蹤你的人看到」+「有人留言」，
 // 所以預設一批裡觸及型、互動型、品牌型各一，不要三則都在講自己的店。
@@ -128,6 +129,10 @@ export function buildNativePrompt({
   lines.push('- **有觀點、敢站隊**——但立場只能建立在知識庫或「我們自己的做法/偏好」上。');
   lines.push('- 具體細節 > 形容詞（「先冰 20 分鐘」勝過「口感絕佳」）。');
   lines.push('- 結尾留一個讓人想回話的東西：問題、邀戰、或沒說完的話。');
+  lines.push('- **碰到我們沒把握的專業題目**（酒的適飲溫度、年份、產地、釀造工法、餐酒搭配理論）：');
+  lines.push('  **不要硬給答案，把問題丟出去讓懂的人在留言區教大家。**');
+  lines.push('  講自己的做法或感受 →「你們都怎麼弄？」「有沒有內行的來解釋一下？」');
+  lines.push('  這樣既不會被抓語病，又會催出高品質留言——留言是最值錢的互動。');
   lines.push('- 不放連結（會壓觸及）；hashtag 0～1 個。');
   lines.push('');
   lines.push('## 絕對不要');
@@ -183,8 +188,12 @@ export function parseDrafts(raw, { maxLen = 500, goals = [] } = {}) {
 // 有知識庫背書的照講；沒把握的改寫成自家做法/偏好，而不是加一堆「可能、也許」。
 export function buildRedTeamPrompt({ text, knowledge = '' }) {
   const lines = [];
-  lines.push('你是 Threads 上最愛抓語病的知識型網友。以下是一則準備發出的貼文。');
-  lines.push('請逐句找出「會被留言戰、或被抓語病」的地方，特別是：');
+  lines.push('你是 Threads 上最愛抓語病的知識型網友，同時也熟台灣的食品廣告法規。');
+  lines.push('以下是一則準備發出的貼文。請逐句找出問題，兩個層次：');
+  lines.push('');
+  lines.push(LEGAL_RULES);
+  lines.push('');
+  lines.push('然後才是「會被留言戰、或被抓語病」的地方，特別是：');
   lines.push('- 把有爭議的說法當成唯一正解');
   lines.push('  （例：「紅酒就是要常溫喝」——台灣室溫 30° 和歐洲酒窖 16–18° 差很多，必被戰）');
   lines.push('- 需要專業或查證才敢講的事實斷言（產地、年份、法規、健康營養、歷史典故）');
@@ -197,6 +206,7 @@ export function buildRedTeamPrompt({ text, knowledge = '' }) {
     lines.push('');
   }
   lines.push('改寫規則：');
+  lines.push('- **法規紅線一律照改、沒有討價還價**——那不是風格問題，是會被開罰。');
   lines.push('- 知識庫裡有的事實，可以放心用肯定句，**不要改**。');
   lines.push('- 有問題的句子 → 改寫成「我們的做法是…／我自己偏好…」這種站得住的說法，或直接刪掉。');
   lines.push('- ⚠️ **改寫後不可以比原本更無聊、更軟弱、更沒觀點。**');

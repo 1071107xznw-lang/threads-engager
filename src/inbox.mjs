@@ -7,6 +7,7 @@
 // 合規：這裡全自動只到「產草稿」。送出一律走既有的人工核准佇列（CLAUDE.md 規則 1）。
 
 import { defaultRunner } from './ai.mjs';
+import { LEGAL_RULES, scanCompliance, summarizeCompliance } from './compliance.mjs';
 
 // 從一串 conversation 裡挑出「別人留的、而且我還沒回」的留言。純函式，好測。
 // rows：/{media-id}/conversation 的 data（攤平的整串，每筆可能有 replied_to）。
@@ -74,7 +75,12 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
   lines.push('- **對方在糾正你、挑語病、或講得比你內行** → 不要道歉式退讓（「您說的是，是我們疏忽」），');
   lines.push('  也不要硬碰硬。用知識庫裡「我們的做法」回應，承認對方那套也成立，守住自己的立場。');
   lines.push('- 對方在開玩笑或吐槽 → 接梗，別一本正經。');
+  lines.push('- **對方講的是我們沒把握的專業題目**（適飲溫度、年份、產地、釀造）→ 不要裝專家、');
+  lines.push('  也不要硬掰。大方承認他懂，講我們自己的做法，再把話丟回去讓他多說一點。');
+  lines.push('  懂的人被請教會很樂意回，那串會愈滾愈長——這比我們假裝知道有價值得多。');
   lines.push('- 對方問資訊（營業時間、價格、能不能包場）→ 知識庫有就直接答；沒有就說可以私訊/來電問，不要瞎掰。');
+  lines.push('');
+  lines.push(LEGAL_RULES);
   lines.push('');
   lines.push('## 絕對不要');
   lines.push('- 推銷、CTA（「歡迎來店裡坐坐」「立即預約」）、放連結、hashtag。');
@@ -94,14 +100,28 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
 
 // 產一則回覆草稿。失敗回 null（該則留在佇列，你可以自己手寫）。
 export async function draftInboxReply({
-  rootPostText, reply, persona, knowledge = '', runner = defaultRunner,
+  rootPostText, reply, persona, knowledge = '', runner = defaultRunner, log = () => {},
 }) {
   try {
     const raw = await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge }));
     const text = String(raw ?? '').trim().replace(/^["「『]|["」』]$/g, '').trim();
-    return text || null;
+    if (!text) return null;
+    // 產完再掃一次法規紅線。不擋（人工核准才會送出），但要讓人看得到。
+    const hits = scanCompliance(text);
+    if (hits.length) log(`⚖️ 這則回覆踩到法規紅線，核准前請看：${summarizeCompliance(hits)}`);
+    return text;
   } catch {
     return null;
+  }
+}
+
+// 產稿全掛時，再跑一次但**不吞例外**，好把真正的原因（例如 claude 沒登入）撈出來給人看。
+async function probeDraftError({ rootPostText, reply, persona, knowledge, runner = defaultRunner }) {
+  try {
+    await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge }));
+    return ''; // 這次成功 → 上一輪應該是零星問題，不誤報
+  } catch (e) {
+    return String(e.message || e).split('\n')[0];
   }
 }
 
@@ -184,9 +204,22 @@ export async function scanInbox({
       persona: brand.replyPersona,
       knowledge,
       runner,
+      log,
     });
     if (draft) { store.saveDraft(row.id, draft); drafted += 1; }
     else { failed += 1; }
+  }
+  // 全部產稿都失敗 → 多半是 claude 沒登入之類的系統性問題，不是內容問題。
+  // 給一個講得出原因的訊息，不要只回「失敗 N 則」讓人瞎猜。
+  if (fresh.length && drafted === 0) {
+    const probe = await probeDraftError({
+      rootPostText: '', reply: { username: fresh[0].author, text: fresh[0].content },
+      persona: brand.replyPersona, knowledge, runner,
+    });
+    if (probe) {
+      log(`⚠️ 所有回覆都產不出來：${probe}`);
+      return { posts: ownPosts.length, found: pending.length, inserted, drafted, failed, reason: probe };
+    }
   }
 
   log(`留言區：新增 ${inserted} 則待回、產出 ${drafted} 則草稿${failed ? `（${failed} 則產稿失敗，可自己手寫）` : ''}`);

@@ -64,3 +64,37 @@ test('defaultRunner：中文與 emoji 被切在 stdout chunk 邊界也不會變�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('isAuthFailure：登入失效與一般錯誤分得開', async () => {
+  const { isAuthFailure } = await import('../src/ai.mjs');
+  assert.equal(isAuthFailure('Failed to authenticate. API Error: 401 OAuth access token has been revoked.'), true);
+  assert.equal(isAuthFailure('Invalid API key'), true);
+  assert.equal(isAuthFailure('spawn ENOENT'), false);
+  assert.equal(isAuthFailure('AI 輸出找不到 JSON 陣列'), false);
+  assert.equal(isAuthFailure(''), false);
+});
+
+test('defaultRunner：登入失效時直接告訴使用者要重新登入', async () => {
+  const { defaultRunner } = await import('../src/ai.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'fakeclaude-auth-'));
+  const bin = join(dir, 'claude');
+  writeFileSync(bin, [
+    '#!/usr/bin/env node',
+    'process.stderr.write("Failed to authenticate. API Error: 401 OAuth access token has been revoked.");',
+    'process.exit(1);',
+  ].join('\n'), 'utf8');
+  chmodSync(bin, 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${dir}:${oldPath}`;
+  try {
+    await assert.rejects(() => defaultRunner('x'), (e) => {
+      assert.equal(e.authError, true);
+      assert.match(e.message, /需要重新登入/);
+      assert.match(e.message, /執行 `claude` 登入/);
+      return true;
+    });
+  } finally {
+    process.env.PATH = oldPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
