@@ -326,6 +326,7 @@ async function loadQueue() {
       <textarea>${esc(p.editedText || p.draftText || '')}</textarea>
       <div class="actions">
         <button class="primary approve">核准</button>
+        ${aiAvailable ? '<button class="regen" title="太 AI／不夠有趣？換個角度重寫（會避開這一版）">🔄 重新生成</button>' : ''}
         <button class="skip">跳過</button>
       </div>
     </div>`).join('') || (liveMode
@@ -342,6 +343,22 @@ $('#queue').addEventListener('click', async (e) => {
   if (!card) return;
   const id = card.dataset.id;
   const text = card.querySelector('textarea').value;
+  if (e.target.classList.contains('regen')) {
+    const btn = e.target;
+    btn.disabled = true; const old = btn.textContent; btn.textContent = '重寫中…';
+    try {
+      const r = await api(`/api/posts/${id}/regenerate`, { method: 'POST' });
+      if (r.error) { alert(r.error); return; }
+      card.querySelector('textarea').value = r.draftText;
+      const legal = card.querySelector('.legal');
+      if (legal) legal.remove();
+      if (r.compliance) {
+        card.querySelector('.content').insertAdjacentHTML('afterend',
+          `<div class="legal">⚖️ 法規風險，核准前請確認：${esc(r.compliance)}</div>`);
+      }
+    } finally { btn.disabled = false; btn.textContent = old; }
+    return;
+  }
   if (e.target.classList.contains('approve')) {
     if (!text.trim()) { alert('回覆內容不可為空'); return; }
     if ([...text].length > 500) { alert('回覆超過 500 字，請縮短'); return; }

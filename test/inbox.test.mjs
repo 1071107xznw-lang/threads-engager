@@ -236,3 +236,51 @@ test('scanInbox：全部產稿都失敗時，回報真正的原因（例如要�
   assert.match(r.reason, /重新登入/);
   assert.ok(logs.some((l) => /所有回覆都產不出來/.test(l)));
 });
+
+// ── 🔄 重新生成：要真的換角度，不是換句話說 ──
+test('buildInboxPrompt：帶 avoid 時列出被打槍的版本並要求換角度', () => {
+  const p = buildInboxPrompt({
+    reply: { username: 'a', text: '紅酒要冰嗎' },
+    avoid: ['謝謝分享，我們也覺得很棒！'],
+  });
+  assert.match(p, /重新生成/);
+  assert.match(p, /謝謝分享，我們也覺得很棒/);
+  assert.match(p, /換一個完全不同的切入角度/);
+  assert.match(p, /不是把同一句話換個說法/);
+  assert.match(p, /太 AI、太乖、太無聊/);
+});
+
+test('buildInboxPrompt：沒有 avoid 就不出現那段', () => {
+  const p = buildInboxPrompt({ reply: { username: 'a', text: 'x' } });
+  assert.doesNotMatch(p, /重新生成/);
+});
+
+test('buildInboxPrompt：avoid 最多列 3 版（prompt 不無限膨脹）', () => {
+  const p = buildInboxPrompt({
+    reply: { username: 'a', text: 'x' },
+    avoid: ['一', '二', '三', '四', '五'],
+  });
+  assert.match(p, /第 3 版/);
+  assert.doesNotMatch(p, /第 4 版/);
+});
+
+test('draftInboxReply：avoid 有傳進 prompt', async () => {
+  let seen = '';
+  const runner = async (p) => { seen = p; return '新版本'; };
+  await draftInboxReply({ reply: { username: 'a', text: 'x' }, avoid: ['舊版本'], runner });
+  assert.match(seen, /舊版本/);
+});
+
+test('scanInbox：存下 rootText，之後重新生成才有脈絡', async () => {
+  const store = createStore(':memory:');
+  const api = fakeApi({
+    posts: [{ id: 'p1', text: '紅酒也能冰著喝' }],
+    conversations: { p1: [{ id: 'r1', username: 'alice', text: '真的假的', permalink: 'https://x/1' }] },
+  });
+  await scanInbox({
+    api, accessToken: 't', userId: '1', store, account: 'me',
+    brand: {}, runner: async () => '回覆', log: () => {},
+  });
+  const row = store.listByStatus('me', 'drafted')[0];
+  assert.equal(row.rootText, '紅酒也能冰著喝');
+});
