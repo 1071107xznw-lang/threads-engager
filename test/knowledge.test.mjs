@@ -15,6 +15,35 @@ test('loadKnowledge：讀檔、去掉 <!-- 註解行、壓縮空行', () => {
   rmSync(p, { force: true });
 });
 
+test('loadKnowledge：跨行註解整塊拿掉（不然填寫說明會被當成品牌事實）', () => {
+  const p = join(tmpdir(), `kb-multiline-${process.pid}.md`);
+  writeFileSync(p, [
+    '<!--',
+    '這是給店家看的填寫說明。',
+    '標「(待確認)」的請改成你們真實的做法或刪掉。',
+    '-->',
+    '',
+    '# 事實',
+    '- 紅酒先冰 20 分鐘',
+  ].join('\n'), 'utf8');
+  const kb = loadKnowledge(p);
+  assert.doesNotMatch(kb, /填寫說明/);
+  assert.doesNotMatch(kb, /待確認/);
+  assert.doesNotMatch(kb, /-->/);
+  assert.match(kb, /紅酒先冰 20 分鐘/);
+  rmSync(p, { force: true });
+});
+
+test('loadKnowledge：沒收尾的註解殘骸也不留', () => {
+  const p = join(tmpdir(), `kb-broken-${process.pid}.md`);
+  writeFileSync(p, '<!-- 忘了收尾\n# 事實\n-->\n- 真的事實\n', 'utf8');
+  const kb = loadKnowledge(p);
+  assert.doesNotMatch(kb, /忘了收尾/);
+  assert.doesNotMatch(kb, /-->/);
+  assert.match(kb, /真的事實/);
+  rmSync(p, { force: true });
+});
+
 test('loadKnowledge：沒有檔案回空字串（不擋產稿）', () => {
   assert.equal(loadKnowledge(null), '');
   assert.equal(loadKnowledge(join(tmpdir(), 'nope-does-not-exist.md')), '');
