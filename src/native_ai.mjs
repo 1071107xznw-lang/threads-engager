@@ -1,7 +1,7 @@
 import { defaultRunner } from './ai.mjs';
 import { sanitizeTopic } from './threads_publish.mjs';
 import { summarizeMetrics } from './insights.mjs';
-import { LEGAL_RULES } from './compliance.mjs';
+import { LEGAL_RULES, humorRules } from './compliance.mjs';
 
 // 每則草稿的任務分工。成長期要的是「被更多沒追蹤你的人看到」+「有人留言」，
 // 所以預設一批裡觸及型、互動型、品牌型各一，不要三則都在講自己的店。
@@ -33,6 +33,7 @@ export function assignGoals(n, mix = ['reach', 'engage', 'brand']) {
 // 依品牌人設 + 知識庫 + 趨勢素材 + 自家成效，組出「產生原生貼文草稿」的繁中 prompt。
 export function buildNativePrompt({
   persona, hotTrends = [], newsTitles = [], tagPosts = [], ownPosts = [],
+  humor,              // 幽默尺度：mild／spicy／hellish
   topPosts = [],      // 自己成效最好的貼文（含 metrics）——學「什麼有效」
   searchTerms = [],   // 大家用什麼字找我們／我們想被搜到的字
   goals = [],         // 每則的任務分工（assignGoals 產生）
@@ -121,6 +122,8 @@ export function buildNativePrompt({
     lines.push('');
   }
 
+  lines.push(humorRules(humor));
+  lines.push('');
   lines.push('## 怎麼寫（Threads 上真的有人看的寫法）');
   lines.push('- **第一行就是鉤子**：Threads 會折疊，第一行決定別人要不要展開。');
   lines.push('  不要暖場、不要「大家好」、不要先鋪陳背景。');
@@ -186,7 +189,7 @@ export function parseDrafts(raw, { maxLen = 500, goals = [] } = {}) {
 //
 // 目標不是把話講軟，而是「一樣有態度，但戰不倒」：
 // 有知識庫背書的照講；沒把握的改寫成自家做法/偏好，而不是加一堆「可能、也許」。
-export function buildRedTeamPrompt({ text, knowledge = '' }) {
+export function buildRedTeamPrompt({ text, knowledge = '', humor }) {
   const lines = [];
   lines.push('你是 Threads 上最愛抓語病的知識型網友，同時也熟台灣的食品廣告法規。');
   lines.push('以下是一則準備發出的貼文。請逐句找出問題，兩個層次：');
@@ -205,8 +208,12 @@ export function buildRedTeamPrompt({ text, knowledge = '' }) {
     lines.push(knowledge);
     lines.push('');
   }
+  lines.push(humorRules(humor));
+  lines.push('');
   lines.push('改寫規則：');
   lines.push('- **法規紅線一律照改、沒有討價還價**——那不是風格問題，是會被開罰。');
+  lines.push('- ⚠️ 但**不要把梗改掉**。玩笑、黃腔、地獄梗只要沒踩法規紅線就留著——');
+  lines.push('  那是品牌個性，不是問題。你的工作是拆彈，不是消毒。');
   lines.push('- 知識庫裡有的事實，可以放心用肯定句，**不要改**。');
   lines.push('- 有問題的句子 → 改寫成「我們的做法是…／我自己偏好…」這種站得住的說法，或直接刪掉。');
   lines.push('- ⚠️ **改寫後不可以比原本更無聊、更軟弱、更沒觀點。**');
@@ -240,10 +247,10 @@ export function parseRedTeam(raw, { fallbackText }) {
 }
 
 // 對單則草稿跑紅隊審稿。失敗時原文放行（不因為審稿掛掉就少一則稿）。
-export async function redTeamDraft({ text, knowledge = '', runner = defaultRunner }) {
+export async function redTeamDraft({ text, knowledge = '', humor, runner = defaultRunner }) {
   if (!text || !String(text).trim()) return { text, changed: false, note: '' };
   try {
-    const raw = await runner(buildRedTeamPrompt({ text, knowledge }));
+    const raw = await runner(buildRedTeamPrompt({ text, knowledge, humor }));
     return parseRedTeam(String(raw), { fallbackText: text });
   } catch {
     return { text, changed: false, note: '' };
@@ -275,6 +282,7 @@ export async function generateDrafts({
   topPosts = [],    // 自己成效最好的貼文（學「什麼有效」）
   searchTerms = [], // 在地／品牌搜尋字
   goalMix,          // 這批的分工配比，如 ['reach','engage','brand']
+  humor,            // 幽默尺度
   knowledge = '',
   n = 3,
   runner = defaultRunner,
@@ -284,7 +292,7 @@ export async function generateDrafts({
   const goals = assignGoals(n, goalMix);
   const prompt = buildNativePrompt({
     persona, hotTrends, newsTitles, tagPosts, ownPosts,
-    topPosts, searchTerms, goals, knowledge, n,
+    topPosts, searchTerms, goals, knowledge, humor, n,
   });
   const raw = await runner(prompt);
   const drafts = parseDrafts(raw, { goals }); // 每則含 { text, angle, topic, goal }
@@ -292,7 +300,7 @@ export async function generateDrafts({
 
   const reviewed = [];
   for (const d of drafts) {
-    const r = await redTeamDraft({ text: d.text, knowledge, runner });
+    const r = await redTeamDraft({ text: d.text, knowledge, humor, runner });
     if (r.changed) log(`🛡 已改寫可能被戰的說法：${r.note || '(未說明)'}`);
     reviewed.push({ ...d, text: r.text, reviewNote: r.changed ? r.note : '' });
   }

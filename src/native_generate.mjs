@@ -96,7 +96,7 @@ export async function runGeneration({
   // 6) AI 產稿（含分工配比 + 紅隊審稿：把會被抓語病的斷言改成站得住的說法）
   const drafts = await generateDrafts({
     persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts,
-    topPosts, searchTerms, goalMix: brand.goalMix,
+    topPosts, searchTerms, goalMix: brand.goalMix, humor: brand.humor,
     knowledge: kb, n: brand.draftsPerRun, runner, redTeam, log,
   });
 

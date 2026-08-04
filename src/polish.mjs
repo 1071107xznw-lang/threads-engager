@@ -8,10 +8,10 @@ import { defaultRunner } from './ai.mjs';
 import { sanitizeTopic } from './threads_publish.mjs';
 import { summarizeMetrics } from './insights.mjs';
 import { redTeamDraft } from './native_ai.mjs';
-import { LEGAL_RULES } from './compliance.mjs';
+import { LEGAL_RULES, humorRules } from './compliance.mjs';
 
 export function buildPolishPrompt({
-  text, persona = '', hotTrends = [], ownPosts = [], topPosts = [], knowledge = '',
+  text, persona = '', hotTrends = [], ownPosts = [], topPosts = [], knowledge = '', humor,
 }) {
   const lines = [];
   lines.push(`人設：${persona}`);
@@ -68,6 +68,8 @@ export function buildPolishPrompt({
   lines.push('');
   lines.push(LEGAL_RULES);
   lines.push('');
+  lines.push(humorRules(humor));
+  lines.push('');
   lines.push('## 絕對不要');
   lines.push('- **改掉作者的原意、立場或他想講的資訊**。這是他的文，你只是幫他磨。');
   lines.push('- 加入原稿沒有、知識庫也沒有的事實或承諾。');
@@ -113,6 +115,7 @@ export async function polishDraft({
   ownPosts = [],
   topPosts = [],
   knowledge = '',
+  humor,
   runner = defaultRunner,
   redTeam = true, // 優化完再過一次紅隊（把會被抓語病的斷言改成站得住的說法）
   log = () => {},
@@ -122,7 +125,7 @@ export async function polishDraft({
 
   let raw;
   try {
-    raw = await runner(buildPolishPrompt({ text: original, persona, hotTrends, ownPosts, topPosts, knowledge }));
+    raw = await runner(buildPolishPrompt({ text: original, persona, hotTrends, ownPosts, topPosts, knowledge, humor }));
   } catch (e) {
     log(`⚠️ 優化失敗（保留原稿）：${e.message}`);
     return { original, text: original, hook: '', topic: null, trend: '', changes: [], reviewNote: '', ok: false };
@@ -131,7 +134,7 @@ export async function polishDraft({
   const p = parsePolish(String(raw), { fallbackText: original });
   let reviewNote = '';
   if (p.ok && redTeam) {
-    const r = await redTeamDraft({ text: p.text, knowledge, runner });
+    const r = await redTeamDraft({ text: p.text, knowledge, humor, runner });
     if (r.changed) {
       p.text = r.text;
       reviewNote = r.note;

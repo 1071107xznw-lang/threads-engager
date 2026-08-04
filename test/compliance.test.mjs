@@ -83,3 +83,64 @@ test('紅隊：法規問題不可以拿來討價還價', async () => {
   const { buildRedTeamPrompt } = await import('../src/native_ai.mjs');
   assert.match(buildRedTeamPrompt({ text: 'x' }), /法規紅線一律照改/);
 });
+
+// ── 😈 幽默尺度：跟法規紅線是兩件事 ──
+test('humorRules：三個尺度各有內容，未知值回落預設', async () => {
+  const { humorRules, HUMOR_LEVELS, DEFAULT_HUMOR } = await import('../src/compliance.mjs');
+  assert.match(humorRules('mild'), /溫和/);
+  assert.match(humorRules('spicy'), /有梗/);
+  assert.match(humorRules('hellish'), /地獄梗全開/);
+  assert.equal(humorRules('亂寫'), humorRules(DEFAULT_HUMOR));
+  assert.equal(humorRules(undefined), humorRules(DEFAULT_HUMOR));
+  assert.ok(Object.keys(HUMOR_LEVELS).length === 3);
+});
+
+test('spicy：明講生蠔那種文化梗可以寫（先前被我誤判成法規問題）', async () => {
+  const { humorRules } = await import('../src/compliance.mjs');
+  assert.match(humorRules('spicy'), /弟弟或妹妹/);
+  assert.match(humorRules('spicy'), /不用閃/);
+});
+
+test('hellish：放行地獄梗，但歧視/災難/未成年/人身攻擊仍是硬線', async () => {
+  const { humorRules } = await import('../src/compliance.mjs');
+  const p = humorRules('hellish');
+  assert.match(p, /歧視/);
+  assert.match(p, /災難、疾病、死亡/);
+  assert.match(p, /未成年/);
+  assert.match(p, /人身攻擊/);
+  assert.match(p, /把刀對準自己/); // 地獄梗的正確用法
+});
+
+test('LEGAL_RULES：明講玩笑本身不違法，違法的是宣稱功效', async () => {
+  const { LEGAL_RULES } = await import('../src/compliance.mjs');
+  assert.match(LEGAL_RULES, /玩笑本身不違法/);
+  assert.match(LEGAL_RULES, /生蠔補腎壯陽/); // 反例：這才是宣稱
+});
+
+test('掃描器不會因為開了地獄梗就漏掉真紅線', async () => {
+  const { scanCompliance } = await import('../src/compliance.mjs');
+  assert.ok(scanCompliance('這杯超解酒').length >= 1);
+  assert.ok(scanCompliance('今晚不醉不歸').length >= 1);
+  // 但文化梗不該被掃描器標記（它本來就沒有禁詞）
+  assert.deepEqual(scanCompliance('生蠔日帶爸爸來吃，明年送你一個弟弟或妹妹'), []);
+});
+
+test('三條產出路徑都吃得到幽默尺度', async () => {
+  const { buildNativePrompt, buildRedTeamPrompt } = await import('../src/native_ai.mjs');
+  const { buildPolishPrompt } = await import('../src/polish.mjs');
+  const { buildInboxPrompt } = await import('../src/inbox.mjs');
+  const prompts = [
+    buildNativePrompt({ persona: 'x', humor: 'hellish', n: 1 }),
+    buildRedTeamPrompt({ text: 'x', humor: 'hellish' }),
+    buildPolishPrompt({ text: 'x', humor: 'hellish' }),
+    buildInboxPrompt({ reply: { username: 'a', text: 'b' }, humor: 'hellish' }),
+  ];
+  for (const p of prompts) assert.match(p, /地獄梗全開/);
+});
+
+test('紅隊：不准把梗改掉（只拆彈，不消毒）', async () => {
+  const { buildRedTeamPrompt } = await import('../src/native_ai.mjs');
+  const p = buildRedTeamPrompt({ text: 'x' });
+  assert.match(p, /不要把梗改掉/);
+  assert.match(p, /拆彈，不是消毒/);
+});

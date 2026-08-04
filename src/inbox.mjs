@@ -7,7 +7,7 @@
 // 合規：這裡全自動只到「產草稿」。送出一律走既有的人工核准佇列（CLAUDE.md 規則 1）。
 
 import { defaultRunner } from './ai.mjs';
-import { LEGAL_RULES, scanCompliance, summarizeCompliance } from './compliance.mjs';
+import { LEGAL_RULES, humorRules, scanCompliance, summarizeCompliance } from './compliance.mjs';
 
 // 從一串 conversation 裡挑出「別人留的、而且我還沒回」的留言。純函式，好測。
 // rows：/{media-id}/conversation 的 data（攤平的整串，每筆可能有 replied_to）。
@@ -39,7 +39,7 @@ export function isLowContentReply(text) {
 
 // 回自家留言的 prompt。跟「主動去別人串下留言」是完全不同的情境：
 // 這裡你是主人，對方是上門的客人——該具體回應他講的點，不是發罐頭感謝。
-export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowledge = '' }) {
+export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowledge = '', humor }) {
   const lowContent = isLowContentReply(reply?.text);
   const lines = [];
   lines.push(`人設：${persona}`);
@@ -82,6 +82,8 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
   lines.push('');
   lines.push(LEGAL_RULES);
   lines.push('');
+  lines.push(humorRules(humor));
+  lines.push('');
   lines.push('## 絕對不要');
   lines.push('- 推銷、CTA（「歡迎來店裡坐坐」「立即預約」）、放連結、hashtag。');
   lines.push('- AI 腔與罐頭句型：「感謝您的分享」「這真是一個很棒的觀點」。');
@@ -100,10 +102,10 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
 
 // 產一則回覆草稿。失敗回 null（該則留在佇列，你可以自己手寫）。
 export async function draftInboxReply({
-  rootPostText, reply, persona, knowledge = '', runner = defaultRunner, log = () => {},
+  rootPostText, reply, persona, knowledge = '', humor, runner = defaultRunner, log = () => {},
 }) {
   try {
-    const raw = await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge }));
+    const raw = await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor }));
     const text = String(raw ?? '').trim().replace(/^["「『]|["」』]$/g, '').trim();
     if (!text) return null;
     // 產完再掃一次法規紅線。不擋（人工核准才會送出），但要讓人看得到。
@@ -116,9 +118,9 @@ export async function draftInboxReply({
 }
 
 // 產稿全掛時，再跑一次但**不吞例外**，好把真正的原因（例如 claude 沒登入）撈出來給人看。
-async function probeDraftError({ rootPostText, reply, persona, knowledge, runner = defaultRunner }) {
+async function probeDraftError({ rootPostText, reply, persona, knowledge, humor, runner = defaultRunner }) {
   try {
-    await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge }));
+    await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor }));
     return ''; // 這次成功 → 上一輪應該是零星問題，不誤報
   } catch (e) {
     return String(e.message || e).split('\n')[0];
@@ -203,6 +205,7 @@ export async function scanInbox({
       reply: { username: row.author, text: row.content },
       persona: brand.replyPersona,
       knowledge,
+      humor: brand.humor,
       runner,
       log,
     });
@@ -214,7 +217,7 @@ export async function scanInbox({
   if (fresh.length && drafted === 0) {
     const probe = await probeDraftError({
       rootPostText: '', reply: { username: fresh[0].author, text: fresh[0].content },
-      persona: brand.replyPersona, knowledge, runner,
+      persona: brand.replyPersona, knowledge, humor: brand.humor, runner,
     });
     if (probe) {
       log(`⚠️ 所有回覆都產不出來：${probe}`);
