@@ -81,6 +81,7 @@ async function loadNativeDrafted() {
         ${d.angle ? `<span class="angle">${esc(d.angle)}</span> ・ ` : ''}
         <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>${goalBadge(d.goal)}
         ${d.reviewNote ? `<div class="review">🛡 已改寫可能被抓語病的說法：${esc(d.reviewNote)}</div>` : ''}
+        ${d.compliance ? `<div class="legal">⚖️ 法規風險，核准前請確認：${esc(d.compliance)}</div>` : ''}
       </div>
       <textarea maxlength="500">${esc(d.editedText || d.draftText)}</textarea>
       <div class="count"></div>
@@ -106,6 +107,7 @@ async function loadNativeApproved() {
     <div class="card" data-id="${d.id}">
       <div class="meta">#${d.id} ・ ${d.scheduledAt ? '⏰ 排程 ' + esc(fmt(d.scheduledAt)) : '已核准'}${d.topic ? ' ・ 主題：' + esc(d.topic) : ''}${goalBadge(d.goal)}</div>
       <div class="content">${esc(d.editedText || d.draftText)}</div>
+      ${d.compliance ? `<div class="legal">⚖️ 法規風險：${esc(d.compliance)}</div>` : ''}
       <div class="actions">
         <button class="danger publish">${d.scheduledAt ? '立即發布' : '發布'}</button>
       </div>
@@ -320,6 +322,7 @@ async function loadQueue() {
         作者 ${esc(p.author || '（手動指定）')} ・ <a href="${esc(p.threadUrl)}" target="_blank">看原貼文 ↗</a>
       </div>
       <div class="content">${esc(p.content)}</div>
+      ${p.compliance ? `<div class="legal">⚖️ 法規風險，核准前請確認：${esc(p.compliance)}</div>` : ''}
       <textarea>${esc(p.editedText || p.draftText || '')}</textarea>
       <div class="actions">
         <button class="primary approve">核准</button>

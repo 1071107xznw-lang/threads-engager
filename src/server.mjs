@@ -16,6 +16,7 @@ import { scanInbox } from './inbox.mjs';
 import { polishDraft } from './polish.mjs';
 import { findHotThreads } from './hotthreads.mjs';
 import { fetchTrendingTopics } from './trends.mjs';
+import { scanCompliance, summarizeCompliance } from './compliance.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
@@ -114,6 +115,14 @@ export function createServer({
     catch (e) { res.status(e.status || 500).json({ error: String(e.message || e) }); }
   };
 
+  // ⚖️ 列表時掃一次法規紅線，附在每列上。做在讀取端而非寫入端，
+  // 所以 AI 產的、你自己手寫的、之前存下的舊草稿，全都會被掃到。
+  // 只警示、不阻擋——送出仍由人逐則核准。
+  const withCompliance = (rows) => rows.map((r) => {
+    const hits = scanCompliance(r.editedText || r.draftText || '');
+    return hits.length ? { ...r, compliance: summarizeCompliance(hits) } : r;
+  });
+
   // 設定精靈路由永遠可用（允許重新設定）
   mountSetupRoutes(app, { store, configDir, apiBase });
 
@@ -132,7 +141,7 @@ export function createServer({
     app.get('/api/accounts', (req, res) => res.json(accounts.map((a) => ({ name: a.name }))));
     app.get('/api/posts', (req, res) => {
       const { account, status = 'drafted' } = req.query;
-      res.json(store.listByStatus(account, status));
+      res.json(withCompliance(store.listByStatus(account, status)));
     });
     app.post('/api/scrape', wrap((req) => runScrape(req.body.account)));
     // 💬 留言區：掃自己貼文底下還沒回的留言 → 產草稿（送出仍需人工核准）
@@ -246,7 +255,7 @@ export function createServer({
       } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
     });
     app.get('/api/native/drafts', (req, res) => {
-      res.json(store.listNativeByStatus(req.query.status || 'drafted'));
+      res.json(withCompliance(store.listNativeByStatus(req.query.status || 'drafted')));
     });
     app.post('/api/native/:id/draft', (req, res) => {
       store.editNativeDraft(Number(req.params.id), req.body.editedText);
