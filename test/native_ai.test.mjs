@@ -255,3 +255,11 @@ test('suggestTopic：空內容回 null、不呼叫 AI', async () => {
   assert.equal(t, null);
   assert.equal(called, false);
 });
+
+test('buildNativePrompt：沒把握的專業題目 → 丟問題請內行人回答，不硬給答案', () => {
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.match(p, /沒把握的專業題目/);
+  assert.match(p, /不要硬給答案/);
+  assert.match(p, /讓懂的人在留言區教大家/);
+  assert.match(p, /催出高品質留言/);
+});

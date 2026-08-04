@@ -209,3 +209,10 @@ test('buildInboxPrompt：一律禁止編營業細節與做不到的承諾', () =
   //    先前把這種情況誤判成編造，差點讓使用者刪掉正確的回覆。
   assert.match(p, /原貼文或知識庫\*\*真的寫到\*\*的可以用/);
 });
+
+test('buildInboxPrompt：被內行人講到沒把握的專業題目 → 不裝專家、把話丟回去', () => {
+  const p = buildInboxPrompt({ reply: { username: 'a', text: '紅酒適飲溫度18度以下吧' } });
+  assert.match(p, /不要裝專家/);
+  assert.match(p, /也不要硬掰/);
+  assert.match(p, /把話丟回去/);
+});

@@ -75,6 +75,9 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
   lines.push('- **對方在糾正你、挑語病、或講得比你內行** → 不要道歉式退讓（「您說的是，是我們疏忽」），');
   lines.push('  也不要硬碰硬。用知識庫裡「我們的做法」回應，承認對方那套也成立，守住自己的立場。');
   lines.push('- 對方在開玩笑或吐槽 → 接梗，別一本正經。');
+  lines.push('- **對方講的是我們沒把握的專業題目**（適飲溫度、年份、產地、釀造）→ 不要裝專家、');
+  lines.push('  也不要硬掰。大方承認他懂，講我們自己的做法，再把話丟回去讓他多說一點。');
+  lines.push('  懂的人被請教會很樂意回，那串會愈滾愈長——這比我們假裝知道有價值得多。');
   lines.push('- 對方問資訊（營業時間、價格、能不能包場）→ 知識庫有就直接答；沒有就說可以私訊/來電問，不要瞎掰。');
   lines.push('');
   lines.push(LEGAL_RULES);
