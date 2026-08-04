@@ -11,23 +11,23 @@
 
 | 項目 | 狀態 | 怎麼處理 |
 |---|---|---|
-| 隱私權政策 URL | 需啟用 | 見下方「隱私權政策」 |
+| 隱私權政策 URL | ✅ **已上線** | 見下方，直接複製 |
 | App 圖示 / 顯示名稱 / 類別 | 待你填 | Basic settings,類別選 **Business** |
 | 商家/開發者驗證 | Meta 若要求才需要 | 依畫面指示 |
 
-### 隱私權政策
+### 隱私權政策 ✅ 已上線
 
-政策本文已寫好在 [`privacy-policy.md`](privacy-policy.md)。用 GitHub Pages 發佈後網址是:
+GitHub Pages 已啟用（`main` / `/docs`），實測 HTTP 200：
 
 ```
 https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 ```
 
-啟用方式(GitHub repo → Settings → Pages → Source 選 `Deploy from a branch`,
-branch 選 `main`、資料夾選 `/docs` → Save)。等一兩分鐘後用**無痕視窗**開一次確認打得開,
-再把網址填進 App 的 Basic settings。
+**把這個網址貼進 App 的 Basic settings → Privacy Policy URL。**
 
-> ⚠️ 審核官一定會點這個連結。打不開 = 直接退件。
+政策本文在 [`privacy-policy.md`](privacy-policy.md)；改那個檔推上 `main`，網站會自動重建。
+
+> ⚠️ 審核官一定會點這個連結。送出前自己用**無痕視窗**再開一次確認。
 
 ---
 

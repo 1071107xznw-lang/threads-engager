@@ -24,9 +24,22 @@ export function pickUnanswered({ rows = [], me }) {
   ));
 }
 
+// 判斷一則留言是不是「幾乎沒有內容」——只有表情或一兩個字（🤤 / 好 / 推推）。
+// 這種留言沒有東西可回應，AI 若照一般規則寫，就會為了湊字數去補營業資訊
+// （幾點開門、DJ 是誰、幾分鐘出餐）——那些通常是編的。
+export function isLowContentReply(text) {
+  const stripped = String(text ?? '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/[\p{M}‍️\u{1f3fb}-\u{1f3ff}]/gu, '') // 變體選擇器、膚色、ZWJ
+    .replace(/[\s\p{P}\p{S}]/gu, '')
+    .trim();
+  return [...stripped].length <= 3;
+}
+
 // 回自家留言的 prompt。跟「主動去別人串下留言」是完全不同的情境：
 // 這裡你是主人，對方是上門的客人——該具體回應他講的點，不是發罐頭感謝。
 export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowledge = '' }) {
+  const lowContent = isLowContentReply(reply?.text);
   const lines = [];
   lines.push(`人設：${persona}`);
   lines.push('');
@@ -47,6 +60,14 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
   lines.push('【對方的留言】');
   lines.push(`@${reply.username}：${String(reply.text).slice(0, 400)}`);
   lines.push('');
+  if (lowContent) {
+    lines.push('## ⚠️ 這則留言幾乎沒有內容（只有表情或一兩個字）');
+    lines.push('- 沒有東西可以回應，就**只回一句**、輕鬆帶過。接他的情緒、或丟一個很短的問題。');
+    lines.push('- 要提到細節（時間、活動、品項、人名）**只能用上面那則原貼文裡真的寫到的**，');
+    lines.push('  或知識庫裡有的。原貼文沒寫、知識庫也沒有的，一個字都不要加。');
+    lines.push('- 寧可短到只有一行，也不要為了湊字數去編。');
+    lines.push('');
+  }
   lines.push('## 怎麼回');
   lines.push('- **具體回應他講的那個點**。罐頭回覆（「謝謝支持！」「歡迎再來」）直接算失敗。');
   lines.push('- 對方講得有道理 → 認同，並補一個自家的做法或觀察，讓對話能再接下去。');
@@ -59,6 +80,11 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
   lines.push('- 推銷、CTA（「歡迎來店裡坐坐」「立即預約」）、放連結、hashtag。');
   lines.push('- AI 腔與罐頭句型：「感謝您的分享」「這真是一個很棒的觀點」。');
   lines.push('- 講知識庫沒有的權威事實（會被再抓一次語病）。');
+  lines.push('- **編造營業細節**：營業/開始時間、價格、DJ 或工作人員名字、出餐分鐘數、');
+  lines.push('  低消規則、活動檔期。');
+  lines.push('  ✅ 原貼文或知識庫**真的寫到**的可以用——那是我們自己公告過的。');
+  lines.push('  ❌ 兩邊都沒有的一個字都不要編，改說「這個可以直接私訊或現場問我們」。');
+  lines.push('- **承諾原貼文沒答應過的事**：例如原貼文沒說可以留位，就不要說幫他留位。');
   lines.push('');
   lines.push('繁體中文、≤120 字、像真人隨口回，可用少量 emoji。');
   lines.push('');
