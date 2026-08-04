@@ -12,7 +12,11 @@ export function resolveKnowledgePath(dir, existsSync) {
 }
 
 // 讀知識庫純文字。沒有檔案就回空字串（產稿仍可運作，只是更保守）。
-// 會去掉 Markdown 註解行（以 <!-- 開頭）與空行過多的情況。
+//
+// 會整塊拿掉 HTML/Markdown 註解 <!-- ... -->，包含跨行的。
+// ⚠️ 這裡一定要處理跨行：範本檔開頭就是一段多行註解（給店家看的填寫說明），
+//    若只濾「開頭是 <!-- 的那一行」，說明文字與收尾的 --> 會整包漏進 prompt，
+//    AI 會把「請改成你們真實的做法」之類的句子當成品牌事實在讀。
 export function loadKnowledge(path, { maxChars = 4000 } = {}) {
   if (!path) return '';
   let raw = '';
@@ -22,8 +26,13 @@ export function loadKnowledge(path, { maxChars = 4000 } = {}) {
     return '';
   }
   const cleaned = raw
+    .replace(/<!--[\s\S]*?-->/g, '') // 完整註解區塊（含跨行）
     .split('\n')
-    .filter((l) => !l.trim().startsWith('<!--'))
+    .filter((l) => {
+      const t = l.trim();
+      // 未收尾的註解殘骸：孤立的 <!-- 開頭行、或孤立的 -->
+      return !t.startsWith('<!--') && t !== '-->';
+    })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
