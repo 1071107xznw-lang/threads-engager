@@ -45,12 +45,17 @@ export function defaultRunner(prompt) {
   return new Promise((resolve, reject) => {
     // stdin 設 ignore：避免 claude -p 等待標準輸入而卡住。
     const child = spawn('claude', ['-p', prompt], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (d) => { out += d; });
-    child.stderr.on('data', (d) => { err += d; });
+    // ⚠️ 一定要先收集 Buffer、最後才一次 toString('utf8')。
+    // 若用 out += chunk，每個 chunk 會各自解碼；中文（3 bytes）與 emoji（4 bytes）
+    // 只要被切在 chunk 邊界，兩半就會各自變成 U+FFFD（�）——產出的貼文裡會出現壞字元。
+    const outChunks = [];
+    const errChunks = [];
+    child.stdout.on('data', (d) => { outChunks.push(d); });
+    child.stderr.on('data', (d) => { errChunks.push(d); });
     child.on('error', reject);
     child.on('close', (code) => {
+      const out = Buffer.concat(outChunks).toString('utf8');
+      const err = Buffer.concat(errChunks).toString('utf8');
       if (code === 0) resolve(out);
       else reject(new Error(`claude -p 失敗（exit ${code}）：${err.trim() || out.trim() || '無輸出'}`));
     });

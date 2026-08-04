@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { buildPrompt, parseResult, scoreAndDraft } from '../src/ai.mjs';
 
 const post = { author: 'bob', content: '剛發了一首新歌', likes: 12 };
@@ -32,4 +35,32 @@ test('scoreAndDraft 未過門檻草稿為 null', async () => {
   const r = await scoreAndDraft({ post, persona: 'x', threshold: 0.6, runner });
   assert.equal(r.score, 0.3);
   assert.equal(r.draft, null);
+});
+
+// ── UTF-8 分塊解碼（真正跑一次子行程，確保修好的是實際路徑）──
+test('defaultRunner：中文與 emoji 被切在 stdout chunk 邊界也不會變成壞字元', async () => {
+  const { defaultRunner } = await import('../src/ai.mjs');
+  // 用一個假的 claude：分兩次寫出，故意把一個中文字切成兩半
+  const dir = mkdtempSync(join(tmpdir(), 'fakeclaude-'));
+  const bin = join(dir, 'claude');
+  writeFileSync(bin, [
+    '#!/usr/bin/env node',
+    'const s = "小編偷喝一口回報🍷真的順，這樣才對";',
+    'const b = Buffer.from(s, "utf8");',
+    'const cut = 20;', // 落在多位元組字元中間
+    'process.stdout.write(b.subarray(0, cut));',
+    'setTimeout(() => { process.stdout.write(b.subarray(cut)); }, 20);',
+  ].join('\n'), 'utf8');
+  chmodSync(bin, 0o755);
+
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${dir}:${oldPath}`;
+  try {
+    const out = await defaultRunner('不重要');
+    assert.doesNotMatch(out, /�/, `輸出含壞字元：${JSON.stringify(out)}`);
+    assert.match(out, /小編偷喝一口回報🍷真的順/);
+  } finally {
+    process.env.PATH = oldPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

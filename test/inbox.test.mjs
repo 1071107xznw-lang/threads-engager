@@ -174,3 +174,36 @@ test('scanInbox：AI 產稿失敗的留言仍留在佇列（可自己手寫）',
   assert.equal(r.failed, 1);
   assert.equal(store.listByStatus('me', 'new').length, 1); // 還在，等你手寫
 });
+
+// ── 沒內容的留言：只回一句，不准掰營業資訊 ──
+test('isLowContentReply：表情、單字、推推算沒內容；有實質內容的不算', async () => {
+  const { isLowContentReply } = await import('../src/inbox.mjs');
+  assert.equal(isLowContentReply('🤤'), true);
+  assert.equal(isLowContentReply('好🤟🏿'), true);
+  assert.equal(isLowContentReply('推推🤟🏿'), true);
+  assert.equal(isLowContentReply('   '), true);
+  assert.equal(isLowContentReply('紅酒我喜歡冰一點'), false);
+  assert.equal(isLowContentReply('台灣常溫太熱吧🤔'), false);
+});
+
+test('buildInboxPrompt：沒內容的留言 → 明文禁止補營業資訊、只回一句', () => {
+  const p = buildInboxPrompt({ reply: { username: 'a', text: '推推🤟🏿' }, persona: '小編' });
+  assert.match(p, /幾乎沒有內容/);
+  assert.match(p, /只回一句/);
+  assert.match(p, /絕對不要為了湊字數去補營業資訊/);
+  assert.match(p, /寧可短到只有一行，也不要編/);
+});
+
+test('buildInboxPrompt：有實質內容的留言不出現「只回一句」那段', () => {
+  const p = buildInboxPrompt({ reply: { username: 'a', text: '紅酒我覺得該冰一下比較好喝' } });
+  assert.doesNotMatch(p, /幾乎沒有內容/);
+});
+
+test('buildInboxPrompt：一律禁止編營業細節與做不到的承諾', () => {
+  const p = buildInboxPrompt({ reply: { username: 'a', text: '你們幾點開？' } });
+  assert.match(p, /編造知識庫沒有的營業細節/);
+  assert.match(p, /DJ 或工作人員名字/);
+  assert.match(p, /承諾我們做不到的事/);
+  assert.match(p, /幫你留位/);
+  assert.match(p, /私訊或現場問/);
+});
