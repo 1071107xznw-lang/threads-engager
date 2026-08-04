@@ -80,3 +80,34 @@ HOST=100.88.137.107
 | 區網上的其他人 | ⚠️ 連得到 | ✅ 碰不到 |
 
 啟動時會明講現在綁在哪、誰連得到，不用自己猜。
+
+---
+
+## 🔁 讓它自己一直跑（launchd 背景服務）
+
+用 `npm start` 開的話，**關掉終端機視窗或關電腦，手機就連不到了**。
+macOS 上交給 launchd：開機自動跑、當掉自動重啟、跟終端機視窗脫鉤。
+
+服務檔：`~/Library/LaunchAgents/com.argo.threads-engager.plist`
+
+| 要做什麼 | 指令 |
+|---|---|
+| 看狀態 | `launchctl print gui/$(id -u)/com.argo.threads-engager \| grep -E "state\|pid"` |
+| 看 log | `tail -f ~/argo-dashboard.log` |
+| 重啟（改完 `.env` 或 `git pull` 後） | `launchctl kickstart -k gui/$(id -u)/com.argo.threads-engager` |
+| 暫停 | `launchctl bootout gui/$(id -u)/com.argo.threads-engager` |
+| 重新啟用 | `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.argo.threads-engager.plist` |
+
+設定要點（照抄時注意）：
+
+- **`WorkingDirectory` 一定要設**——server 從 cwd 讀 `.env` 與 `config/`、寫 `data.db`。
+- **`PATH` 要含 `claude`**——AI 產稿是 spawn 子行程，PATH 沒有它就會全部失敗。
+  launchd 的預設 PATH 很精簡，不會有 `/usr/local/bin`。
+- **`KeepAlive` + `ThrottleInterval`**——開機時 Tailscale 可能還沒配好 IP，
+  綁不上會啟動失敗；靠 KeepAlive 重試到成功，ThrottleInterval 避免狂重啟。
+- **node 路徑寫死版本號**（nvm 的路徑含 `v24.17.0`）。之後用 nvm 升級 node
+  要記得改這個檔，不然服務會起不來。
+
+> ⚠️ 服務跑起來後**不要再手動 `npm start`**——會搶同一個埠。
+> 要臨時停掉服務再手動跑，用上面的「暫停」。
+

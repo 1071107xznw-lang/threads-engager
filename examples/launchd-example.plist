@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.yourname.threads-engager</string>
+
+  <!-- 直接呼叫 node，不透過 npm：少一層行程，KeepAlive 才抓得準 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_NAME/.nvm/versions/node/vXX.XX.X/bin/node</string>
+    <string>src/server.mjs</string>
+  </array>
+
+  <!-- server 從 cwd 讀 .env 與 config/、寫 data.db，所以一定要設對 -->
+  <key>WorkingDirectory</key>
+  <string>/Users/YOUR_NAME/threads-engager</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- PATH 要含 claude（AI 產稿是 spawn 出去的）與 node -->
+    <key>PATH</key>
+    <string>/Users/YOUR_NAME/.nvm/versions/node/vXX.XX.X/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/YOUR_NAME</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- 當掉自動重啟。開機時 Tailscale 可能還沒配好 IP，綁不上會失敗，
+       靠這個重試到成功為止（配合下面的 ThrottleInterval，不會狂燒 CPU） -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_NAME/argo-dashboard.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_NAME/argo-dashboard.log</string>
+</dict>
+</plist>
