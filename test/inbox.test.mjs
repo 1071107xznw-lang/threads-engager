@@ -190,8 +190,8 @@ test('buildInboxPrompt：沒內容的留言 → 明文禁止補營業資訊、�
   const p = buildInboxPrompt({ reply: { username: 'a', text: '推推🤟🏿' }, persona: '小編' });
   assert.match(p, /幾乎沒有內容/);
   assert.match(p, /只回一句/);
-  assert.match(p, /絕對不要為了湊字數去補營業資訊/);
-  assert.match(p, /寧可短到只有一行，也不要編/);
+  assert.match(p, /只能用上面那則原貼文裡真的寫到的/);
+  assert.match(p, /寧可短到只有一行/);
 });
 
 test('buildInboxPrompt：有實質內容的留言不出現「只回一句」那段', () => {
@@ -201,9 +201,11 @@ test('buildInboxPrompt：有實質內容的留言不出現「只回一句」那�
 
 test('buildInboxPrompt：一律禁止編營業細節與做不到的承諾', () => {
   const p = buildInboxPrompt({ reply: { username: 'a', text: '你們幾點開？' } });
-  assert.match(p, /編造知識庫沒有的營業細節/);
+  assert.match(p, /編造營業細節/);
   assert.match(p, /DJ 或工作人員名字/);
-  assert.match(p, /承諾我們做不到的事/);
-  assert.match(p, /幫你留位/);
+  assert.match(p, /承諾原貼文沒答應過的事/);
   assert.match(p, /私訊或現場問/);
+  // ⚠️ 關鍵：原貼文/知識庫真的寫到的細節「可以用」——那是自己公告過的，
+  //    先前把這種情況誤判成編造，差點讓使用者刪掉正確的回覆。
+  assert.match(p, /原貼文或知識庫\*\*真的寫到\*\*的可以用/);
 });
