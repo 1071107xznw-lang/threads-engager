@@ -216,3 +216,23 @@ test('buildInboxPrompt：被內行人講到沒把握的專業題目 → 不裝�
   assert.match(p, /也不要硬掰/);
   assert.match(p, /把話丟回去/);
 });
+
+test('scanInbox：全部產稿都失敗時，回報真正的原因（例如要重新登入）', async () => {
+  const store = createStore(':memory:');
+  const api = {
+    async getProfile() { return { username: ME }; },
+    async listOwnPosts() { return { data: [{ id: 'p1', text: '貼文' }] }; },
+    async getConversation() {
+      return { data: [{ id: 'r1', username: 'alice', text: '留言', permalink: 'https://x/1' }] };
+    },
+  };
+  const logs = [];
+  const r = await scanInbox({
+    api, accessToken: 't', userId: '1', store, account: 'me', brand: {},
+    runner: async () => { throw new Error('claude CLI 需要重新登入（token 已失效）。'); },
+    log: (m) => logs.push(m),
+  });
+  assert.equal(r.drafted, 0);
+  assert.match(r.reason, /重新登入/);
+  assert.ok(logs.some((l) => /所有回覆都產不出來/.test(l)));
+});

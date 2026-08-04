@@ -115,6 +115,16 @@ export async function draftInboxReply({
   }
 }
 
+// 產稿全掛時，再跑一次但**不吞例外**，好把真正的原因（例如 claude 沒登入）撈出來給人看。
+async function probeDraftError({ rootPostText, reply, persona, knowledge, runner = defaultRunner }) {
+  try {
+    await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge }));
+    return ''; // 這次成功 → 上一輪應該是零星問題，不誤報
+  } catch (e) {
+    return String(e.message || e).split('\n')[0];
+  }
+}
+
 // 掃自己近期貼文的留言區 → 未回覆的存進 posts（kind='inbox'）→ 逐則產回覆草稿。
 // 全部相依可注入以利測試；不做任何送出。
 export async function scanInbox({
@@ -198,6 +208,18 @@ export async function scanInbox({
     });
     if (draft) { store.saveDraft(row.id, draft); drafted += 1; }
     else { failed += 1; }
+  }
+  // 全部產稿都失敗 → 多半是 claude 沒登入之類的系統性問題，不是內容問題。
+  // 給一個講得出原因的訊息，不要只回「失敗 N 則」讓人瞎猜。
+  if (fresh.length && drafted === 0) {
+    const probe = await probeDraftError({
+      rootPostText: '', reply: { username: fresh[0].author, text: fresh[0].content },
+      persona: brand.replyPersona, knowledge, runner,
+    });
+    if (probe) {
+      log(`⚠️ 所有回覆都產不出來：${probe}`);
+      return { posts: ownPosts.length, found: pending.length, inserted, drafted, failed, reason: probe };
+    }
   }
 
   log(`留言區：新增 ${inserted} 則待回、產出 ${drafted} 則草稿${failed ? `（${failed} 則產稿失敗，可自己手寫）` : ''}`);
