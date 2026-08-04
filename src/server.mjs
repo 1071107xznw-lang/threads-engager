@@ -457,19 +457,27 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   //   · 要用手機/遠端連（Tailscale）→ 留預設，但密碼要夠強
   const HOST = process.env.HOST || '0.0.0.0';
   app.listen(PORT, HOST, () => {
-    const url = `http://localhost:${PORT}`;
+    // 綁特定介面時，localhost 是連不到的——印出真正能開的網址，不要騙人。
+    const isAny = HOST === '0.0.0.0' || HOST === '::';
+    const isLocal = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
+    const url = (isAny || isLocal) ? `http://localhost:${PORT}` : `http://${HOST}:${PORT}`;
     if (!initial.setupComplete) {
       console.log(`尚未設定 → 開啟 ${url} 完成設定精靈`);
     } else {
       console.log(`Dashboard: ${url}` + (dryRunNow() ? '　[DRY_RUN 乾跑中]' : ''));
     }
     console.log(dashboardPassword ? '🔒 已啟用登入密碼' : '🔓 未設登入密碼（僅建議本機使用；遠端請設 DASHBOARD_PASSWORD）');
-    if (HOST === '127.0.0.1' || HOST === 'localhost') {
-      console.log('🏠 只綁本機（127.0.0.1）——區網其他裝置連不到。要手機連請改 HOST。');
-    } else {
-      console.log(`🌐 綁 ${HOST}——**同一個區網的其他裝置都連得到**。`
+    if (isLocal) {
+      console.log('🏠 只綁本機——區網其他裝置連不到。要手機連請改 HOST。');
+    } else if (isAny) {
+      console.log(`🌐 綁 ${HOST}（所有介面）——**同一個區網的其他裝置都連得到**。`
         + (dashboardPassword ? '' : ' ⚠️ 而且沒設密碼！'));
-      console.log('   只在自己電腦上用的話，建議在 .env 設 HOST=127.0.0.1');
+      console.log('   只在自己電腦上用 → HOST=127.0.0.1；要手機連又不想開放區網 → 綁 Tailscale IP。');
+    } else {
+      // 綁單一介面（典型用途：Tailscale 的 100.x）——只有那個網路上的裝置連得到
+      const via = /^100\./.test(HOST) ? 'Tailscale 私人網路' : `介面 ${HOST}`;
+      console.log(`🔐 只綁 ${HOST}——只有${via}上的裝置連得到，區網其他人碰不到。`
+        + (dashboardPassword ? '' : ' ⚠️ 但沒設密碼！'));
     }
   });
 }
