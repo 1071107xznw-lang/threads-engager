@@ -17,6 +17,7 @@ export class SearchQuotaError extends Error {
 // 限流/5xx 會指數退避重試；每次實際呼叫都計入額度（保守計算，寧可少搜也不撞頂）。
 export async function searchKeyword({
   api, store, accessToken, q, limit = 10, cap, nowIso = new Date().toISOString(),
+  searchType = 'TOP', // TOP＝Threads 自己的熱門排序；RECENT＝時間序
   retries = 2, sleepImpl, log = () => {},
 }) {
   const effectiveCap = clampCap(cap);
@@ -28,7 +29,7 @@ export async function searchKeyword({
       const used = store.countSearches7d(nowIso);
       if (used >= effectiveCap) throw new SearchQuotaError(used, effectiveCap);
       store.logSearch(q, nowIso);
-      return api.keywordSearch({ accessToken, q, limit });
+      return api.keywordSearch({ accessToken, q, limit, searchType });
     },
     { retries, sleepImpl, log },
   );

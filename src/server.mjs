@@ -13,6 +13,9 @@ import { runGeneration } from './native_generate.mjs';
 import { suggestTopic as nativeSuggestTopic } from './native_ai.mjs';
 import { rankOwnPosts } from './insights.mjs';
 import { scanInbox } from './inbox.mjs';
+import { polishDraft } from './polish.mjs';
+import { findHotThreads } from './hotthreads.mjs';
+import { fetchTrendingTopics } from './trends.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 import { isClaudeAvailable } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
@@ -95,6 +98,8 @@ export function createServer({
   runSend,
   runGenerate,
   suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
+  polishPost, // ✨ 優化自己寫的貼文：({ text }) => Promise<{original, text, hook, ...}>
+  findHot, // 🔍 關鍵字找熱門串：({ keyword }) => Promise<{results, ...}>
   topInsights, // 自家貼文成效排名：() => Promise<{available, top, reason}>
   publishDraft,
 }) {
@@ -219,6 +224,18 @@ export function createServer({
         const topic = await suggestTopic({ text: String(req.body?.text ?? '') });
         return { topic: topic || '' };
       }));
+    }
+    // ✨ 優化「自己寫的」一則貼文：找鉤子、緊縮、建議主題、自然蹭熱度、去 AI 腔。
+    // 只回建議，不動佇列——採不採用由使用者決定。
+    if (polishPost) {
+      app.post('/api/native/polish', wrap(async (req) => {
+        const text = validateText(String(req.body?.text ?? ''));
+        return polishPost({ text });
+      }));
+    }
+    // 🔍 關鍵字找熱門串：只產出連結清單，留言由你自己去 Threads 手動做
+    if (findHot) {
+      app.post('/api/search/hot', wrap((req) => findHot({ keyword: String(req.body?.keyword ?? '') })));
     }
     // 手動撰寫一則原生貼文（不需 AI）：進待審核佇列
     app.post('/api/native/manual', (req, res) => {
@@ -347,6 +364,42 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       return runGeneration({ settings, brand: currentBrand(), store, accessToken, api, configDir });
     },
     suggestTopic: ({ text }) => nativeSuggestTopic({ text, persona: currentBrand().persona }),
+    polishPost: async ({ text }) => {
+      const { settings, api, accessToken } = currentAuth();
+      const brand = currentBrand();
+      // 語氣樣本 + 成效範本 + 熱搜，跟產稿吃同一套訊號
+      let ownRaw = [];
+      try {
+        const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 25 });
+        ownRaw = (res.data || []).filter((p) => p && p.text);
+      } catch { /* 拿不到就少一個訊號，不擋優化 */ }
+      let topPosts = [];
+      if (brand.useInsights !== false && ownRaw.length) {
+        topPosts = (await rankOwnPosts({ api, accessToken, posts: ownRaw, limit: 5, maxFetch: 15 })).top;
+      }
+      const hotTrends = await fetchTrendingTopics({ feeds: brand.hotTrendsFeeds, log: () => {} });
+      return polishDraft({
+        text,
+        persona: brand.persona,
+        hotTrends,
+        ownPosts: ownRaw.slice(0, 10).map((p) => p.text),
+        topPosts,
+        knowledge: loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null),
+      });
+    },
+    findHot: async ({ keyword }) => {
+      const { settings, api, accessToken } = currentAuth();
+      const brand = currentBrand();
+      let ownUsername = store.getSetting('username') || null;
+      if (!ownUsername) {
+        try {
+          ownUsername = (await api.getProfile({ accessToken, userId: settings.userId, fields: 'id,username' })).username;
+        } catch { /* 拿不到就不濾自己 */ }
+      }
+      return findHotThreads({
+        api, store, accessToken, keyword, limit: 20, cap: brand.searchCap7d, ownUsername,
+      });
+    },
     topInsights: async () => {
       const { settings, api, accessToken } = currentAuth();
       const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 25 });
