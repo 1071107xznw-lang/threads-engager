@@ -47,6 +47,7 @@ async function loadConfig() {
   aiAvailable = Boolean(c.aiAvailable);
   // 沒有 claude CLI → 隱藏「產生草稿」、顯示提示（仍可手動撰寫）
   $('#gen').style.display = aiAvailable ? '' : 'none';
+  $('#polish').style.display = aiAvailable ? '' : 'none'; // 優化也要靠 AI
   $('#aiHint').style.display = aiAvailable ? 'none' : '';
   const title = (c.brandName ? c.brandName + ' ' : '') + '內容中心';
   document.title = title;
@@ -162,6 +163,84 @@ $('#manualAdd').addEventListener('click', async () => {
     $('#manualAdd').disabled = false;
   }
 });
+
+// ── ✨ 優化自己寫的貼文（只給建議，採不採用你決定）──
+$('#polish').addEventListener('click', async () => {
+  const text = manualText.value.trim();
+  if (!text) { alert('先寫點東西再優化'); return; }
+  const btn = $('#polish');
+  btn.disabled = true;
+  $('#mstatus').textContent = '優化中…（找鉤子＋蹭熱度＋紅隊審稿，可能數十秒）';
+  try {
+    const r = await api('/api/native/polish', { method: 'POST', body: JSON.stringify({ text }) });
+    if (r.error) { $('#mstatus').textContent = '失敗：' + r.error; return; }
+    if (!r.ok) { $('#mstatus').textContent = 'AI 沒能給出更好的版本，維持你的原稿'; return; }
+    $('#mstatus').textContent = '';
+    const box = $('#polishResult');
+    box.style.display = '';
+    box.className = 'polish';
+    box.innerHTML = `
+      <h4>✨ 優化後（採用前請自己看一遍）</h4>
+      <div class="after">${esc(r.text)}</div>
+      <ul>
+        ${r.hook ? `<li><strong>鉤子</strong>：${esc(r.hook)}</li>` : ''}
+        ${r.topic ? `<li><strong>建議主題</strong>：${esc(r.topic)}</li>` : ''}
+        <li><strong>熱度</strong>：${r.trend ? esc(r.trend) : '沒有自然接得上的熱搜，沒硬蹭'}</li>
+        ${(r.changes || []).map((c) => `<li>${esc(c)}</li>`).join('')}
+        ${r.reviewNote ? `<li>🛡 ${esc(r.reviewNote)}</li>` : ''}
+      </ul>
+      <div class="actions">
+        <button class="primary usePolish">採用這版</button>
+        <button class="dropPolish">保留我的原稿</button>
+      </div>`;
+    box.querySelector('.usePolish').addEventListener('click', () => {
+      manualText.value = r.text;
+      manualText.dispatchEvent(new Event('input'));
+      if (r.topic) $('#mstatus').textContent = `已採用。建議主題「${r.topic}」，核准時可填入。`;
+      else $('#mstatus').textContent = '已採用。';
+      box.style.display = 'none';
+    });
+    box.querySelector('.dropPolish').addEventListener('click', () => { box.style.display = 'none'; });
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── 🔍 找熱門串（只給連結，留言你自己去 Threads 手動做）──
+$('#hotSearch').addEventListener('click', async () => {
+  const keyword = $('#hotKeyword').value.trim();
+  if (!keyword) { alert('請輸入關鍵字'); return; }
+  const btn = $('#hotSearch');
+  btn.disabled = true;
+  $('#hotStatus').textContent = '搜尋中…';
+  try {
+    const r = await api('/api/search/hot', { method: 'POST', body: JSON.stringify({ keyword }) });
+    const box = $('#hotResults');
+    if (r.error) { $('#hotStatus').textContent = '失敗：' + r.error; box.innerHTML = ''; return; }
+    $('#hotStatus').textContent = `${r.results.length} 則・近7天額度 ${r.quotaUsed7d}`;
+    if (r.quotaExhausted) {
+      box.innerHTML = '<p>⚠️ keyword_search 近 7 天額度已用完，暫停搜尋以保護帳號額度。</p>';
+      return;
+    }
+    if (!r.results.length) {
+      box.innerHTML = r.devModeLikely
+        ? '<p>只搜到你自己的貼文——這是 App 還在 <strong>Development 模式</strong>的典型徵狀。上 Live 後才搜得到別人的公開串。</p>'
+        : '<p>沒搜到結果，換個關鍵字試試。</p>';
+      return;
+    }
+    box.innerHTML = r.results.map((p, i) => `
+      <div class="hot-item">
+        <div class="who">
+          ${i + 1}. @${esc(p.username || '?')}${p.timestamp ? ' ・ ' + esc(fmt(p.timestamp)) : ''}
+          ${p.permalink ? ` ・ <a href="${esc(p.permalink)}" target="_blank" rel="noopener">開啟去留言 ↗</a>` : ''}
+        </div>
+        <div>${esc(p.text.slice(0, 160))}</div>
+      </div>`).join('');
+  } finally {
+    btn.disabled = false;
+  }
+});
+$('#hotKeyword').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#hotSearch').click(); });
 
 $('#ndrafted').addEventListener('input', updateCounts);
 $('#ndrafted').addEventListener('click', async (e) => {

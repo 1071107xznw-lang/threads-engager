@@ -44,6 +44,14 @@
     .rank { font-weight: 700; color: #999; margin-right: 6px; }
     .metrics { font-size: 13px; color: #333; margin-top: 8px; }
     .metrics b { color: #1c1c1e; }
+    .polish { margin-top: 12px; border-top: 1px dashed #ddd; padding-top: 12px; }
+    .polish h4 { margin: 0 0 6px; font-size: 14px; }
+    .polish .after { white-space: pre-wrap; background: #eefaf0; border: 1px solid #c3e8ce; padding: 10px; border-radius: 8px; font-size: 14px; }
+    .polish ul { margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: #444; }
+    .hot-item { border-top: 1px solid #eee; padding: 10px 0; font-size: 14px; }
+    .hot-item:first-child { border-top: none; }
+    .hot-item .who { font-size: 12.5px; color: #666; margin-bottom: 4px; }
+    .hot-item .who a { color: #0a66c2; }
     h3 { margin: 24px 0 4px; }
   </style>
 </head>
@@ -76,9 +84,11 @@
       <textarea id="manualText" maxlength="500" placeholder="直接把想發的貼文內容寫在這裡…"></textarea>
       <div class="count" id="manualCount">0/500</div>
       <div class="actions">
+        <button id="polish" title="找鉤子、緊縮內容、建議主題、自然搭上熱度、去 AI 腔">✨ 優化這則</button>
         <button id="manualAdd" class="primary">加入待審核</button>
         <span id="mstatus" class="status"></span>
       </div>
+      <div id="polishResult" style="display:none"></div>
     </div>
     <h3>待審核</h3>
     <div id="ndrafted"></div>
@@ -108,6 +118,24 @@
         <button id="manualReplyAdd" class="primary">加入待審核</button>
         <span id="mrstatus" class="status"></span>
       </div>
+    </div>
+
+    <h3>🔍 找熱門串（自己去留言）</h3>
+    <div class="card">
+      <div class="meta">
+        輸入關鍵字 → 整理出 Threads 上的公開串連結，你自己點進去手動留言。
+      </div>
+      <div class="sched">
+        <input class="topic" id="hotKeyword" placeholder="關鍵字（例：調酒、台北酒吧）" maxlength="50" />
+        <button id="hotSearch" class="primary">搜尋</button>
+        <span id="hotStatus" class="status"></span>
+      </div>
+      <div class="hint" style="margin-bottom:0">
+        ⚠️ Threads API <strong>不提供他人貼文的觀看/按讚數</strong>（insights 只能讀自己的），
+        所以無法真的照觀看數排序——這裡用的是 Threads 自己的熱門排序（TOP）。<br>
+        ⚠️ App 在 Development 模式時只會回你自己的貼文，等於沒資料，<strong>要上 Live 才有用</strong>。
+      </div>
+      <div id="hotResults"></div>
     </div>
 
     <h3>待審核回覆</h3>
