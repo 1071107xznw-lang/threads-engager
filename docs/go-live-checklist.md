@@ -2,6 +2,10 @@
 
 把 Meta App 從 **Development** 送審切到 **Live**，聆聽回覆與站內趨勢才會有真實資料。
 
+> 📄 **要實際動筆送審時看這份**：[`app-review-submission.md`](app-review-submission.md)
+> ——每個權限的英文用途說明（可直接貼）、錄影分鏡表、截圖清單、給審核官的測試步驟。
+> 隱私權政策本文在 [`privacy-policy.md`](privacy-policy.md)。
+
 ## 前置認知
 - Dev 模式：`keyword_search` 只回**你自己**的貼文；App 只對開發者/測試者帳號有效。
 - 要 Live 才有用的：**聆聽回覆別人的串**、**站內趨勢**。
@@ -14,6 +18,8 @@
 - [ ] **補齊 App 基本資料（Basic settings）**——沒填會直接擋審核：
   - [ ] App 圖示、顯示名稱、類別
   - [ ] **隱私權政策 URL**（必填，要能公開開啟）
+        → 政策本文已備妥於 [`privacy-policy.md`](privacy-policy.md)；
+        用 GitHub Pages 發佈（Settings → Pages → `main` / `/docs`）即得公開網址
   - [ ] 商家/開發者驗證（Meta 若要求）
 - [ ] **確認要送審的權限**（Use cases → Access the Threads API → Customize）：
   - [ ] `threads_basic` — 必備（讀 profile）
