@@ -450,13 +450,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     getConfig, setDryRun, setupComplete: initial.setupComplete, ...handlers,
   });
   const PORT = Number(process.env.PORT) || 4321;
-  app.listen(PORT, () => {
+  // HOST 決定「誰連得到這個 dashboard」。預設 0.0.0.0＝所有網路介面，
+  // 也就是**同一個區網的任何人**（店裡的客用 Wi-Fi 也算）都連得到。
+  // 這個 dashboard 能用你的身分發文，所以：
+  //   · 只在自己電腦上用          → HOST=127.0.0.1
+  //   · 要用手機/遠端連（Tailscale）→ 留預設，但密碼要夠強
+  const HOST = process.env.HOST || '0.0.0.0';
+  app.listen(PORT, HOST, () => {
     const url = `http://localhost:${PORT}`;
     if (!initial.setupComplete) {
       console.log(`尚未設定 → 開啟 ${url} 完成設定精靈`);
     } else {
       console.log(`Dashboard: ${url}` + (dryRunNow() ? '　[DRY_RUN 乾跑中]' : ''));
     }
-    console.log(dashboardPassword ? '🔒 已啟用登入密碼（遠端/區網存取需輸入）' : '🔓 未設登入密碼（僅建議本機使用；遠端請設 DASHBOARD_PASSWORD）');
+    console.log(dashboardPassword ? '🔒 已啟用登入密碼' : '🔓 未設登入密碼（僅建議本機使用；遠端請設 DASHBOARD_PASSWORD）');
+    if (HOST === '127.0.0.1' || HOST === 'localhost') {
+      console.log('🏠 只綁本機（127.0.0.1）——區網其他裝置連不到。要手機連請改 HOST。');
+    } else {
+      console.log(`🌐 綁 ${HOST}——**同一個區網的其他裝置都連得到**。`
+        + (dashboardPassword ? '' : ' ⚠️ 而且沒設密碼！'));
+      console.log('   只在自己電腦上用的話，建議在 .env 設 HOST=127.0.0.1');
+    }
   });
 }
