@@ -39,6 +39,10 @@ npm start          # 開 http://localhost:4321
 > 想分享給別人？把這個 repo 給他，他 `npm install && npm start`、在精靈連自己的帳號即可——**一人一套、各用各的帳號**（詳見 [`docs/friend-setup.md`](docs/friend-setup.md)）。
 
 > 📱 **手機/遠端存取**：在 `.env` 設 `DASHBOARD_PASSWORD` 加登入密碼，再走區網 IP 或 Tailscale 連進來——步驟見 [`docs/remote-access.md`](docs/remote-access.md)。埠衝突可設 `PORT`。
+>
+> ⚠️ **誰連得到**：預設綁 `0.0.0.0`，代表**同一個區網的任何裝置**都連得到這個 dashboard——
+> 而它能用你的身分發文。如果這台電腦跟客用 Wi-Fi 同一個網路（店面很常見），
+> 密碼就是唯一防線。只在自己電腦上用的話，在 `.env` 設 `HOST=127.0.0.1` 直接把區網關掉。
 
 ### 進階：用 `.env`（不透過精靈）
 
