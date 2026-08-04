@@ -98,3 +98,11 @@ test('defaultRunner：登入失效時直接告訴使用者要重新登入', asyn
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('buildPrompt：outreach 也支援 avoid（重新生成時換角度）', () => {
+  const p = buildPrompt(post, '人設', { avoid: ['太乖的第一版'] });
+  assert.match(p, /重新生成/);
+  assert.match(p, /太乖的第一版/);
+  assert.match(p, /換一個完全不同的切入角度/);
+  assert.doesNotMatch(buildPrompt(post, '人設'), /重新生成/);
+});

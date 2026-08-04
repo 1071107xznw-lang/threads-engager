@@ -62,6 +62,9 @@ export function createStore(dbPath) {
   // kind：'inbox'＝別人在我自己貼文底下的留言；null/'outreach'＝主動去別人串下留言。
   // 兩者的送出限制不同（見 threads_reply.pickSendable）。
   try { db.exec('ALTER TABLE posts ADD COLUMN kind TEXT'); } catch { /* 已存在 */ }
+  // rootText：inbox 留言所屬的「我自己那則貼文」內容。存起來，重新生成回覆時
+  // 才有脈絡可用，不必再打一次 conversation API。
+  try { db.exec('ALTER TABLE posts ADD COLUMN rootText TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN topic TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN scheduledAt TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN reviewNote TEXT'); } catch { /* 已存在 */ }
@@ -87,10 +90,10 @@ export function createStore(dbPath) {
       }
       if (existing) return { id: existing.id, inserted: false };
       const info = db.prepare(`
-        INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, targetId, kind, discoveredAt)
-        VALUES (@account, @threadUrl, @author, @content, @likes, @postedAt, @targetId, @kind, @discoveredAt)
+        INSERT INTO posts (account, threadUrl, author, content, likes, postedAt, targetId, kind, rootText, discoveredAt)
+        VALUES (@account, @threadUrl, @author, @content, @likes, @postedAt, @targetId, @kind, @rootText, @discoveredAt)
       `).run({
-        author: null, content: null, likes: 0, postedAt: null, targetId: null, kind: null,
+        author: null, content: null, likes: 0, postedAt: null, targetId: null, kind: null, rootText: null,
         ...p,
         discoveredAt: new Date().toISOString(),
       });
@@ -127,6 +130,13 @@ export function createStore(dbPath) {
     },
     markFailed(id, error) {
       db.prepare('UPDATE posts SET status=?, error=? WHERE id=?').run('failed', error, id);
+    },
+    getPost(id) {
+      return db.prepare(`
+        SELECT p.*, d.draftText, d.editedText
+        FROM posts p LEFT JOIN drafts d ON d.postId = p.id
+        WHERE p.id=?
+      `).get(id);
     },
     listByStatus(account, status) {
       return db.prepare(`

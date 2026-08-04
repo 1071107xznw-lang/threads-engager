@@ -39,7 +39,10 @@ export function isLowContentReply(text) {
 
 // 回自家留言的 prompt。跟「主動去別人串下留言」是完全不同的情境：
 // 這裡你是主人，對方是上門的客人——該具體回應他講的點，不是發罐頭感謝。
-export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowledge = '', humor }) {
+export function buildInboxPrompt({
+  rootPostText = '', reply, persona = '', knowledge = '', humor,
+  avoid = [], // 已經被使用者打槍的版本——要明顯不同，不是換句話說
+}) {
   const lowContent = isLowContentReply(reply?.text);
   const lines = [];
   lines.push(`人設：${persona}`);
@@ -67,6 +70,16 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
     lines.push('- 要提到細節（時間、活動、品項、人名）**只能用上面那則原貼文裡真的寫到的**，');
     lines.push('  或知識庫裡有的。原貼文沒寫、知識庫也沒有的，一個字都不要加。');
     lines.push('- 寧可短到只有一行，也不要為了湊字數去編。');
+    lines.push('');
+  }
+  if (avoid.length) {
+    lines.push('## 🔄 這是重新生成——前面的版本使用者不滿意');
+    avoid.slice(0, 3).forEach((t, i) => lines.push(`✗ 第 ${i + 1} 版：${String(t).slice(0, 200)}`));
+    lines.push('');
+    lines.push('- 使用者按了「重新生成」，通常代表**太 AI、太乖、太無聊、不像這個帳號在講話**。');
+    lines.push('- **換一個完全不同的切入角度**，不是把同一句話換個說法。');
+    lines.push('  可以換的方向：接不同的點、換情緒（吐槽↔共鳴↔自嘲）、換長度、改成反問、直接耍賤。');
+    lines.push('- 如果前面幾版都很客氣，這次就大膽一點。');
     lines.push('');
   }
   lines.push('## 怎麼回');
@@ -102,10 +115,11 @@ export function buildInboxPrompt({ rootPostText = '', reply, persona = '', knowl
 
 // 產一則回覆草稿。失敗回 null（該則留在佇列，你可以自己手寫）。
 export async function draftInboxReply({
-  rootPostText, reply, persona, knowledge = '', humor, runner = defaultRunner, log = () => {},
+  rootPostText, reply, persona, knowledge = '', humor, avoid = [],
+  runner = defaultRunner, log = () => {},
 }) {
   try {
-    const raw = await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor }));
+    const raw = await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor, avoid }));
     const text = String(raw ?? '').trim().replace(/^["「『]|["」』]$/g, '').trim();
     if (!text) return null;
     // 產完再掃一次法規紅線。不擋（人工核准才會送出），但要讓人看得到。
@@ -188,6 +202,7 @@ export async function scanInbox({
       content: r.text,
       targetId: r.id,
       kind: 'inbox',
+      rootText: r.rootPostText || null,
     }).inserted) inserted += 1;
   }
 

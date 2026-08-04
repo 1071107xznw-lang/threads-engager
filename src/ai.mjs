@@ -21,7 +21,15 @@ export function isAuthFailure(message) {
     .test(String(message ?? ''));
 }
 
-export function buildPrompt(post, persona) {
+export function buildPrompt(post, persona, { avoid = [] } = {}) {
+  const avoidBlock = avoid.length ? [
+    '',
+    '## 🔄 這是重新生成——前面的版本使用者不滿意',
+    ...avoid.slice(0, 3).map((t, i) => `✗ 第 ${i + 1} 版：${String(t).slice(0, 200)}`),
+    '',
+    '通常代表太 AI、太乖、太無聊。**換一個完全不同的切入角度**，不是換句話說。',
+    '可以換：接不同的點、換情緒（吐槽↔共鳴↔自嘲）、換長度、改成反問。',
+  ] : [];
   return [
     `人設：${persona}`,
     '',
@@ -32,6 +40,7 @@ export function buildPrompt(post, persona) {
     `貼文作者：${post.author}`,
     `貼文讚數：${post.likes}`,
     `貼文內容：${post.content}`,
+    ...avoidBlock,
     '',
     '只輸出一個 JSON 物件，格式：{"score": 數字, "draft": "字串"}，不要其他文字。',
   ].join('\n');
@@ -78,8 +87,8 @@ export function defaultRunner(prompt) {
   });
 }
 
-export async function scoreAndDraft({ post, persona, threshold, runner = defaultRunner }) {
-  const raw = await runner(buildPrompt(post, persona));
+export async function scoreAndDraft({ post, persona, threshold, avoid = [], runner = defaultRunner }) {
+  const raw = await runner(buildPrompt(post, persona, { avoid }));
   const { score, draft } = parseResult(raw);
   return { score, draft: score >= threshold ? draft : null };
 }

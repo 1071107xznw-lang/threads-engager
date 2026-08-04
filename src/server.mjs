@@ -12,13 +12,13 @@ import { publishText, validateTopic, validateText } from './threads_publish.mjs'
 import { runGeneration } from './native_generate.mjs';
 import { suggestTopic as nativeSuggestTopic } from './native_ai.mjs';
 import { rankOwnPosts } from './insights.mjs';
-import { scanInbox } from './inbox.mjs';
+import { scanInbox, draftInboxReply } from './inbox.mjs';
 import { polishDraft } from './polish.mjs';
 import { findHotThreads } from './hotthreads.mjs';
 import { fetchTrendingTopics } from './trends.mjs';
 import { scanCompliance, summarizeCompliance } from './compliance.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
-import { isClaudeAvailable } from './ai.mjs';
+import { isClaudeAvailable, scoreAndDraft } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
 import { sendApprovedReplies, validateReply, parseTargetId } from './threads_reply.mjs';
 import { publishDue } from './scheduler.mjs';
@@ -96,6 +96,7 @@ export function createServer({
   password, // 選用：設了就用 Basic Auth 保護整個 dashboard
   runScrape,
   runInboxScan, // 掃自己貼文底下未回覆的留言 → 產草稿
+  regenerateReply, // 🔄 重新生成某則回覆草稿（換個角度）
   runSend,
   runGenerate,
   suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
@@ -146,6 +147,8 @@ export function createServer({
     app.post('/api/scrape', wrap((req) => runScrape(req.body.account)));
     // 💬 留言區：掃自己貼文底下還沒回的留言 → 產草稿（送出仍需人工核准）
     if (runInboxScan) app.post('/api/inbox/scan', wrap(() => runInboxScan()));
+    // 🔄 重新生成：第一版不夠有趣/太 AI 時換一個角度重寫（會避開已被打槍的版本）
+    if (regenerateReply) app.post('/api/posts/:id/regenerate', wrap((req) => regenerateReply(Number(req.params.id))));
     app.post('/api/send', wrap((req) => runSend(req.body.account)));
     app.post('/api/posts/:id/draft', (req, res) => {
       store.editDraft(Number(req.params.id), req.body.editedText);
@@ -358,6 +361,34 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         api, accessToken, userId: settings.userId, store, account: ACCOUNT, brand,
         knowledge: loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null),
       });
+    },
+    regenerateReply: async (id) => {
+      const row = store.getPost(id);
+      if (!row) { const e = new Error('找不到這則'); e.status = 404; throw e; }
+      if (row.status !== 'drafted' && row.status !== 'new') {
+        const e = new Error('只有待審核的草稿可以重新生成'); e.status = 400; throw e;
+      }
+      const brand = currentBrand();
+      const knowledge = loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null);
+      // 把目前這版（含你手動改過的）當成「不要再寫成這樣」的負面範例
+      const avoid = [row.editedText, row.draftText].filter((t) => t && t.trim());
+      let draft = null;
+      if (row.kind === 'inbox') {
+        draft = await draftInboxReply({
+          rootPostText: row.rootText || '',
+          reply: { username: row.author, text: row.content },
+          persona: brand.replyPersona, knowledge, humor: brand.humor, avoid,
+        });
+      } else {
+        const r = await scoreAndDraft({
+          post: { author: row.author, content: row.content, likes: row.likes },
+          persona: brand.replyPersona, threshold: 0, avoid,
+        });
+        draft = r.draft;
+      }
+      if (!draft) { const e = new Error('AI 沒能產出新版本，原本的草稿保留'); e.status = 502; throw e; }
+      store.saveDraft(id, draft);
+      return { ok: true, draftText: draft, compliance: summarizeCompliance(scanCompliance(draft)) };
     },
     runSend: () => {
       const { settings, api, accessToken } = currentAuth();
