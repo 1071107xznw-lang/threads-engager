@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createServer, makePublishDraft } from '../src/server.mjs';
+import express from 'express';
+import { createServer, makePublishDraft, listenWithFallback } from '../src/server.mjs';
 import { createStore } from '../src/store.mjs';
 
 function setup() {
@@ -324,4 +325,59 @@ test('DRY_RUN 切換端點呼叫 setDryRun', async () => {
   await request(app).post('/api/config/dryrun').send({ dryRun: false });
   assert.equal(val, false);
   store.close();
+});
+
+// ── listen 綁不上就退回本機 ───────────────────────────────────
+// 真實情境：HOST 綁了 Tailscale 的 100.x，Tailscale 沒開 → 那個 IP 不在機器上
+// → listen 噴 EADDRNOTAVAIL → 行程死 → launchd 拉起來 → 再死。無聲重啟迴圈。
+// 這裡用 192.0.2.1（RFC 5737 TEST-NET-1，保證不會被指派）穩定重現。
+const UNAVAILABLE = '192.0.2.1';
+
+function tinyApp() {
+  return express().get('/', (_req, res) => res.send('ok'));
+}
+
+test('listenWithFallback：綁得上就用指定介面，不退回', async () => {
+  const { server, host, fellBack } = await listenWithFallback({
+    app: tinyApp(), port: 0, host: '127.0.0.1', warn: () => {},
+  });
+  assert.equal(host, '127.0.0.1');
+  assert.equal(fellBack, false);
+  server.close();
+});
+
+test('listenWithFallback：綁不上時退回 127.0.0.1 而不是讓行程死掉', async () => {
+  const warnings = [];
+  const { server, host, fellBack } = await listenWithFallback({
+    app: tinyApp(), port: 0, host: UNAVAILABLE, warn: (m) => warnings.push(m),
+  });
+  assert.equal(host, '127.0.0.1');
+  assert.equal(fellBack, true);
+  // 退回這件事必須大聲講，否則使用者只看到「連不到」、原因埋在日誌裡。
+  const all = warnings.join('\n');
+  assert.match(all, /綁不上/);
+  assert.match(all, /已退回 127\.0\.0\.1/);
+  server.close();
+});
+
+test('listenWithFallback：綁 Tailscale IP 失敗時，警告要點名 Tailscale', async () => {
+  const warnings = [];
+  const { server } = await listenWithFallback({
+    app: tinyApp(), port: 0, host: '100.88.137.107', warn: (m) => warnings.push(m),
+  });
+  assert.match(warnings.join('\n'), /Tailscale 沒開/);
+  server.close();
+});
+
+test('listenWithFallback：埠被佔（EADDRINUSE）照樣丟出來，不可以偷偷退回', async () => {
+  // 退回只會蓋掉真正的埠衝突——那是另一個問題，要讓它爆出來。
+  const first = await listenWithFallback({
+    app: tinyApp(), port: 0, host: '127.0.0.1', warn: () => {},
+  });
+  const busyPort = first.server.address().port;
+  await assert.rejects(
+    () => listenWithFallback({ app: tinyApp(), port: busyPort, host: '127.0.0.1', warn: () => {} }),
+    (e) => e.code === 'EADDRINUSE'
+  );
+  first.server.close();
 });

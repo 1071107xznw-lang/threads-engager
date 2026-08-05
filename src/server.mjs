@@ -55,6 +55,36 @@ export function basicAuth(password) {
   };
 }
 
+// 綁定監聽介面，綁不上就退回本機。
+//
+// 為什麼要這樣：HOST 若指向一個「當下不在這台機器上」的位址（最典型的情況是綁了
+// Tailscale 的 100.x，然後 Tailscale 沒開），listen 會噴 EADDRNOTAVAIL 讓整個行程死掉。
+// launchd 看到行程死掉就重新拉起來，於是變成無聲的重啟迴圈——使用者看到的只有
+// 「連不到」，真正的原因埋在日誌裡。退回 127.0.0.1 至少讓本機還能用，
+// 而且把原因大聲印出來。
+//
+// 只對 EADDRNOTAVAIL 退回。EADDRINUSE（埠被佔）是另一回事，退回只會蓋掉真正的衝突，
+// 那種要讓它照常爆出來。
+export function listenWithFallback({
+  app, port, host, fallbackHost = '127.0.0.1', warn = console.error,
+}) {
+  return new Promise((resolve, reject) => {
+    const attempt = (h, isFallback) => {
+      const server = app.listen(port, h);
+      server.once('listening', () => resolve({ server, host: h, fellBack: isFallback }));
+      server.once('error', (err) => {
+        if (isFallback || err.code !== 'EADDRNOTAVAIL') { reject(err); return; }
+        warn(`\n⚠️  綁不上 ${h}:${port}——這個位址現在不在這台機器上。`);
+        if (/^100\./.test(h)) warn('   看起來是 Tailscale 的 IP：Tailscale 沒開，這個位址就會消失。');
+        warn(`   已退回 ${fallbackHost}:${port}，本機仍可使用；其他裝置（含手機）連不到。`);
+        warn(`   要恢復遠端連線：把 Tailscale 打開，再重啟服務。\n`);
+        attempt(fallbackHost, true);
+      });
+    };
+    attempt(host, false);
+  });
+}
+
 // 把「發布一則已核准的原生草稿」包成可注入的函式（守門：只有 approved 可發）。
 export function makePublishDraft({ store, publish }) {
   return async (id) => {
@@ -487,28 +517,31 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   //   · 只在自己電腦上用          → HOST=127.0.0.1
   //   · 要用手機/遠端連（Tailscale）→ 留預設，但密碼要夠強
   const HOST = process.env.HOST || '0.0.0.0';
-  app.listen(PORT, HOST, () => {
-    // 綁特定介面時，localhost 是連不到的——印出真正能開的網址，不要騙人。
-    const isAny = HOST === '0.0.0.0' || HOST === '::';
-    const isLocal = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
-    const url = (isAny || isLocal) ? `http://localhost:${PORT}` : `http://${HOST}:${PORT}`;
-    if (!initial.setupComplete) {
-      console.log(`尚未設定 → 開啟 ${url} 完成設定精靈`);
-    } else {
-      console.log(`Dashboard: ${url}` + (dryRunNow() ? '　[DRY_RUN 乾跑中]' : ''));
-    }
-    console.log(dashboardPassword ? '🔒 已啟用登入密碼' : '🔓 未設登入密碼（僅建議本機使用；遠端請設 DASHBOARD_PASSWORD）');
-    if (isLocal) {
-      console.log('🏠 只綁本機——區網其他裝置連不到。要手機連請改 HOST。');
-    } else if (isAny) {
-      console.log(`🌐 綁 ${HOST}（所有介面）——**同一個區網的其他裝置都連得到**。`
-        + (dashboardPassword ? '' : ' ⚠️ 而且沒設密碼！'));
-      console.log('   只在自己電腦上用 → HOST=127.0.0.1；要手機連又不想開放區網 → 綁 Tailscale IP。');
-    } else {
-      // 綁單一介面（典型用途：Tailscale 的 100.x）——只有那個網路上的裝置連得到
-      const via = /^100\./.test(HOST) ? 'Tailscale 私人網路' : `介面 ${HOST}`;
-      console.log(`🔐 只綁 ${HOST}——只有${via}上的裝置連得到，區網其他人碰不到。`
-        + (dashboardPassword ? '' : ' ⚠️ 但沒設密碼！'));
-    }
-  });
+  // 底下所有訊息都以「真正綁上的」介面為準（boundHost），不是使用者要求的那個。
+  // 退回本機之後還印「手機連得到」就是騙人。
+  const { host: boundHost, fellBack } = await listenWithFallback({ app, port: PORT, host: HOST });
+  // 綁特定介面時，localhost 是連不到的——印出真正能開的網址，不要騙人。
+  const isAny = boundHost === '0.0.0.0' || boundHost === '::';
+  const isLocal = boundHost === '127.0.0.1' || boundHost === 'localhost' || boundHost === '::1';
+  const url = (isAny || isLocal) ? `http://localhost:${PORT}` : `http://${boundHost}:${PORT}`;
+  if (!initial.setupComplete) {
+    console.log(`尚未設定 → 開啟 ${url} 完成設定精靈`);
+  } else {
+    console.log(`Dashboard: ${url}` + (dryRunNow() ? '　[DRY_RUN 乾跑中]' : ''));
+  }
+  console.log(dashboardPassword ? '🔒 已啟用登入密碼' : '🔓 未設登入密碼（僅建議本機使用；遠端請設 DASHBOARD_PASSWORD）');
+  if (fellBack) {
+    console.log(`🏠 已退回本機（原本要綁 ${HOST}，綁不上）——手機/遠端現在連不到。`);
+  } else if (isLocal) {
+    console.log('🏠 只綁本機——區網其他裝置連不到。要手機連請改 HOST。');
+  } else if (isAny) {
+    console.log(`🌐 綁 ${boundHost}（所有介面）——**同一個區網的其他裝置都連得到**。`
+      + (dashboardPassword ? '' : ' ⚠️ 而且沒設密碼！'));
+    console.log('   只在自己電腦上用 → HOST=127.0.0.1；要手機連又不想開放區網 → 綁 Tailscale IP。');
+  } else {
+    // 綁單一介面（典型用途：Tailscale 的 100.x）——只有那個網路上的裝置連得到
+    const via = /^100\./.test(boundHost) ? 'Tailscale 私人網路' : `介面 ${boundHost}`;
+    console.log(`🔐 只綁 ${boundHost}——只有${via}上的裝置連得到，區網其他人碰不到。`
+      + (dashboardPassword ? '' : ' ⚠️ 但沒設密碼！'));
+  }
 }
