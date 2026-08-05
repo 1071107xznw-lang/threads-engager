@@ -17,6 +17,7 @@ const GOALS = {
   reach: { label: '🚀 觸及', title: '蹭熱搜、寫給還沒追蹤你的人看' },
   engage: { label: '💬 互動', title: '目標是留言數：丟一個超好回答的問題' },
   brand: { label: '🏠 品牌', title: '講專業或店裡日常，建立記憶點' },
+  share: { label: '✈️ 分享', title: '目標是分享數：冷知識／對號入座／懶人包／邀請函——讓人想傳給某個特定的人' },
 };
 const goalBadge = (g) => (GOALS[g]
   ? `<span class="goal ${g}" title="${esc(GOALS[g].title)}">${esc(GOALS[g].label)}</span>`

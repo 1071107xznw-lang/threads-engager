@@ -226,3 +226,12 @@ test('deleteNativeDraft：不存在的回 not_found', () => {
   assert.deepEqual(store.deleteNativeDraft(9999), { deleted: false, reason: 'not_found' });
   store.close();
 });
+
+test('countNativeDrafts：供 goalMix 跨批次輪替用', () => {
+  const store = createStore(':memory:');
+  assert.equal(store.countNativeDrafts(), 0);
+  store.insertNativeDraft({ draftText: 'a' });
+  store.insertNativeDraft({ draftText: 'b' });
+  assert.equal(store.countNativeDrafts(), 2);
+  store.close();
+});

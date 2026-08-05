@@ -263,3 +263,42 @@ test('buildNativePrompt：沒把握的專業題目 → 丟問題請內行人回�
   assert.match(p, /讓懂的人在留言區教大家/);
   assert.match(p, /催出高品質留言/);
 });
+
+// ── share 目標 + 配比輪替 ──────────────────────────────
+test('POST_GOALS 有 share，且講的是分享不是讚', async () => {
+  const { POST_GOALS } = await import('../src/native_ai.mjs');
+  assert.ok(POST_GOALS.share, 'share 目標要存在');
+  assert.match(POST_GOALS.share.brief, /分享數/);
+  assert.match(POST_GOALS.share.brief, /傳給.*特定的人/);
+  // 四種寫法都要在，否則 AI 只會寫其中一種
+  for (const kw of ['冷知識', '對號入座', '懶人包', '邀請函']) {
+    assert.match(POST_GOALS.share.brief, new RegExp(kw), `缺少寫法：${kw}`);
+  }
+  // 不可以退化成推銷
+  assert.match(POST_GOALS.share.brief, /不是推銷 CTA/);
+});
+
+test('assignGoals：每批數量 < 配比長度時，靠 offset 跨批次輪完一圈', async () => {
+  const { assignGoals } = await import('../src/native_ai.mjs');
+  const mix = ['reach', 'engage', 'brand', 'share'];
+  // 這是實際會踩到的組合：draftsPerRun=3、四種目標。
+  // 沒有 offset 的話 share 永遠輪不到。
+  assert.deepEqual(assignGoals(3, mix, 0), ['reach', 'engage', 'brand']);
+  assert.deepEqual(assignGoals(3, mix, 3), ['share', 'reach', 'engage']);
+  const seen = new Set();
+  for (let off = 0; off < 12; off += 3) assignGoals(3, mix, off).forEach((g) => seen.add(g));
+  assert.deepEqual([...seen].sort(), ['brand', 'engage', 'reach', 'share'], '四批之內每個目標都要輪到');
+});
+
+test('assignGoals：offset 超過長度或為負都要正常繞回', async () => {
+  const { assignGoals } = await import('../src/native_ai.mjs');
+  const mix = ['reach', 'engage', 'brand', 'share'];
+  assert.deepEqual(assignGoals(2, mix, 4), ['reach', 'engage']);
+  assert.deepEqual(assignGoals(2, mix, 9), ['engage', 'brand']);
+  assert.deepEqual(assignGoals(2, mix, -1), ['share', 'reach']);
+});
+
+test('assignGoals：不認得的目標代號要濾掉', async () => {
+  const { assignGoals } = await import('../src/native_ai.mjs');
+  assert.deepEqual(assignGoals(2, ['share', '亂打的'], 0), ['share', 'share']);
+});
