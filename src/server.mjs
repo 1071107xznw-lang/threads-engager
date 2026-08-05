@@ -65,24 +65,52 @@ export function basicAuth(password) {
 //
 // 只對 EADDRNOTAVAIL 退回。EADDRINUSE（埠被佔）是另一回事，退回只會蓋掉真正的衝突，
 // 那種要讓它照常爆出來。
-export function listenWithFallback({
-  app, port, host, fallbackHost = '127.0.0.1', warn = console.error,
-}) {
+export const isLoopbackHost = (h) => h === '127.0.0.1' || h === 'localhost' || h === '::1';
+export const isWildcardHost = (h) => h === '0.0.0.0' || h === '::';
+
+// 單次 listen 包成 Promise。listening / error 只會來一個，用完即棄。
+function listenOn(app, port, host) {
   return new Promise((resolve, reject) => {
-    const attempt = (h, isFallback) => {
-      const server = app.listen(port, h);
-      server.once('listening', () => resolve({ server, host: h, fellBack: isFallback }));
-      server.once('error', (err) => {
-        if (isFallback || err.code !== 'EADDRNOTAVAIL') { reject(err); return; }
-        warn(`\n⚠️  綁不上 ${h}:${port}——這個位址現在不在這台機器上。`);
-        if (/^100\./.test(h)) warn('   看起來是 Tailscale 的 IP：Tailscale 沒開，這個位址就會消失。');
-        warn(`   已退回 ${fallbackHost}:${port}，本機仍可使用；其他裝置（含手機）連不到。`);
-        warn(`   要恢復遠端連線：把 Tailscale 打開，再重啟服務。\n`);
-        attempt(fallbackHost, true);
-      });
-    };
-    attempt(host, false);
+    const server = app.listen(port, host);
+    server.once('listening', () => resolve(server));
+    server.once('error', reject);
   });
+}
+
+export async function listenWithFallback({
+  app, port, host, fallbackHost = '127.0.0.1', warn = console.error, alsoLocal = true,
+}) {
+  let server;
+  let boundHost = host;
+  let fellBack = false;
+  try {
+    server = await listenOn(app, port, host);
+  } catch (err) {
+    if (err.code !== 'EADDRNOTAVAIL') throw err;
+    warn(`\n⚠️  綁不上 ${host}:${port}——這個位址現在不在這台機器上。`);
+    if (/^100\./.test(host)) warn('   看起來是 Tailscale 的 IP：Tailscale 沒開（或換了 IP），這個位址就會消失。');
+    warn(`   已退回 ${fallbackHost}:${port}，本機仍可使用；其他裝置（含手機）連不到。`);
+    warn('   要恢復遠端連線：確認 Tailscale 開著、HOST 是當下正確的 IP，再重啟服務。\n');
+    server = await listenOn(app, port, fallbackHost);
+    boundHost = fallbackHost;
+    fellBack = true;
+  }
+
+  // 綁單一介面（典型：Tailscale 的 100.x）時，這台機器自己反而連不到 localhost——
+  // 因為 loopback 不在綁定的介面裡。所以額外再綁一個 127.0.0.1。
+  // 這不會多開放任何人：127.0.0.1 只有本機連得到，區網一樣進不來。
+  // 實務上的差別：自己用和錄影都能走 localhost（畫面上不會出現內網位址），
+  // 手機走 Tailscale IP。
+  let localServer = null;
+  if (alsoLocal && !isLoopbackHost(boundHost) && !isWildcardHost(boundHost)) {
+    try {
+      localServer = await listenOn(app, port, fallbackHost);
+    } catch (err) {
+      // 本機這條沒綁上（例如 127.0.0.1:port 被別的東西佔了）不該連累主要服務。
+      warn(`⚠️  ${fallbackHost}:${port} 沒綁上（${err.code || err.message}）——本機請改用 http://${boundHost}:${port}`);
+    }
+  }
+  return { server, host: boundHost, fellBack, localServer, alsoLocal: Boolean(localServer) };
 }
 
 // 把「發布一則已核准的原生草稿」包成可注入的函式（守門：只有 approved 可發）。
@@ -530,11 +558,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const HOST = process.env.HOST || '0.0.0.0';
   // 底下所有訊息都以「真正綁上的」介面為準（boundHost），不是使用者要求的那個。
   // 退回本機之後還印「手機連得到」就是騙人。
-  const { host: boundHost, fellBack } = await listenWithFallback({ app, port: PORT, host: HOST });
-  // 綁特定介面時，localhost 是連不到的——印出真正能開的網址，不要騙人。
-  const isAny = boundHost === '0.0.0.0' || boundHost === '::';
-  const isLocal = boundHost === '127.0.0.1' || boundHost === 'localhost' || boundHost === '::1';
-  const url = (isAny || isLocal) ? `http://localhost:${PORT}` : `http://${boundHost}:${PORT}`;
+  const { host: boundHost, fellBack, alsoLocal } = await listenWithFallback({ app, port: PORT, host: HOST });
+  // 綁特定介面時，localhost 只有在額外綁上時才連得到——印出真正能開的網址，不要騙人。
+  const isAny = isWildcardHost(boundHost);
+  const isLocal = isLoopbackHost(boundHost);
+  const url = (isAny || isLocal || alsoLocal) ? `http://localhost:${PORT}` : `http://${boundHost}:${PORT}`;
   if (!initial.setupComplete) {
     console.log(`尚未設定 → 開啟 ${url} 完成設定精靈`);
   } else {
@@ -554,5 +582,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const via = /^100\./.test(boundHost) ? 'Tailscale 私人網路' : `介面 ${boundHost}`;
     console.log(`🔐 只綁 ${boundHost}——只有${via}上的裝置連得到，區網其他人碰不到。`
       + (dashboardPassword ? '' : ' ⚠️ 但沒設密碼！'));
+    if (alsoLocal) console.log(`   📱 手機/遠端：http://${boundHost}:${PORT}　💻 這台機器：http://localhost:${PORT}`);
   }
 }

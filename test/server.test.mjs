@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import express from 'express';
+import { EventEmitter } from 'node:events';
 import { createServer, makePublishDraft, listenWithFallback } from '../src/server.mjs';
 import { createStore } from '../src/store.mjs';
 
@@ -403,4 +404,62 @@ test('DELETE /api/native/:id 擋掉已發布的，並說清楚為什麼', async 
   assert.match(res.body.error, /紀錄/);
   assert.ok(store.getNativeDraft(id));
   store.close();
+});
+
+// 綁「真的存在的非本機介面」在測試機上不可攜（每台機器 IP 不同），
+// 所以用假的 app 記錄 listen 呼叫，測的是決策邏輯本身。
+function recordingApp(failFor = () => null) {
+  const calls = [];
+  return {
+    calls,
+    listen(port, host) {
+      calls.push(host);
+      const em = new EventEmitter();
+      em.close = () => {};
+      queueMicrotask(() => {
+        const code = failFor(host);
+        if (code) em.emit('error', Object.assign(new Error(code), { code }));
+        else em.emit('listening');
+      });
+      return em;
+    },
+  };
+}
+
+test('listenWithFallback：綁非本機介面時，額外再綁一個 127.0.0.1', async () => {
+  // 只綁 Tailscale IP 的話，這台機器自己反而連不到 localhost——錄影/自用都會卡。
+  const app = recordingApp();
+  const r = await listenWithFallback({ app, port: 4321, host: '100.119.253.93', warn: () => {} });
+  assert.deepEqual(app.calls, ['100.119.253.93', '127.0.0.1']);
+  assert.equal(r.host, '100.119.253.93');
+  assert.equal(r.alsoLocal, true);
+});
+
+test('listenWithFallback：已經是本機或萬用位址就不重複綁', async () => {
+  for (const h of ['127.0.0.1', '0.0.0.0']) {
+    const app = recordingApp();
+    const r = await listenWithFallback({ app, port: 4321, host: h, warn: () => {} });
+    assert.deepEqual(app.calls, [h], `${h} 不該多綁一次`);
+    assert.equal(r.alsoLocal, false);
+  }
+});
+
+test('listenWithFallback：額外綁本機失敗，不可以連累主要服務', async () => {
+  // 127.0.0.1:port 被別的東西佔住時，Tailscale 那條還是要活著。
+  const warnings = [];
+  const app = recordingApp((h) => (h === '127.0.0.1' ? 'EADDRINUSE' : null));
+  const r = await listenWithFallback({
+    app, port: 4321, host: '100.119.253.93', warn: (m) => warnings.push(m),
+  });
+  assert.equal(r.host, '100.119.253.93');
+  assert.equal(r.alsoLocal, false);
+  assert.match(warnings.join('\n'), /沒綁上.*EADDRINUSE/s);
+});
+
+test('listenWithFallback：退回本機之後不會再多綁一次本機', async () => {
+  const app = recordingApp((h) => (h === '192.0.2.1' ? 'EADDRNOTAVAIL' : null));
+  const r = await listenWithFallback({ app, port: 4321, host: '192.0.2.1', warn: () => {} });
+  assert.deepEqual(app.calls, ['192.0.2.1', '127.0.0.1']);
+  assert.equal(r.fellBack, true);
+  assert.equal(r.alsoLocal, false);
 });
