@@ -191,3 +191,38 @@ test('countSentToday / recentAuthors 分得清 inbox 與 outreach', () => {
   assert.equal(authors.has('bob'), true);
   assert.equal(authors.has('alice'), false);
 });
+
+// ── 刪除原生草稿 ─────────────────────────────────────────
+test('deleteNativeDraft：待審／已核准／已略過都可以刪', () => {
+  const store = createStore(':memory:');
+  for (const st of ['drafted', 'approved', 'skipped']) {
+    const id = store.insertNativeDraft({ draftText: '稿' });
+    store.setNativeStatus(id, st);
+    assert.deepEqual(store.deleteNativeDraft(id), { deleted: true }, st);
+    assert.equal(store.getNativeDraft(id), null);
+  }
+  store.close();
+});
+
+test('deleteNativeDraft：已發布的不給刪（那是紀錄，不是待辦）', () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '稿' });
+  store.markNativePublished(id, 'post_1');
+  assert.deepEqual(store.deleteNativeDraft(id), { deleted: false, reason: 'published' });
+  assert.ok(store.getNativeDraft(id), '不可以真的被刪掉');
+  store.close();
+});
+
+test('deleteNativeDraft：發布中的不給刪（會留下無主 container）', () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '稿' });
+  store.setNativeStatus(id, 'publishing');
+  assert.deepEqual(store.deleteNativeDraft(id), { deleted: false, reason: 'publishing' });
+  store.close();
+});
+
+test('deleteNativeDraft：不存在的回 not_found', () => {
+  const store = createStore(':memory:');
+  assert.deepEqual(store.deleteNativeDraft(9999), { deleted: false, reason: 'not_found' });
+  store.close();
+});

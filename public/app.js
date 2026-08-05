@@ -110,6 +110,7 @@ async function loadNativeApproved() {
       ${d.compliance ? `<div class="legal">⚖️ 法規風險：${esc(d.compliance)}</div>` : ''}
       <div class="actions">
         <button class="danger publish">${d.scheduledAt ? '立即發布' : '發布'}</button>
+        <button class="del" title="不想發了，直接刪掉">🗑 刪除</button>
       </div>
     </div>`).join('') || '<p>沒有待發布的貼文。核准後會出現在這裡。</p>';
 }
@@ -287,8 +288,18 @@ $('#ndrafted').addEventListener('click', async (e) => {
 });
 
 $('#napproved').addEventListener('click', async (e) => {
-  if (!e.target.classList.contains('publish')) return;
   const card = e.target.closest('.card');
+  // 🗑 刪除：核准之後才發現不想發，不用先發再刪。刪掉就沒了，所以要二次確認。
+  if (e.target.classList.contains('del')) {
+    if (!confirm('確定刪掉這則？刪掉就找不回來了。')) return;
+    e.target.disabled = true;
+    const r = await api(`/api/native/${card.dataset.id}`, { method: 'DELETE' });
+    if (r.error) { $('#nstatus').textContent = '刪不掉：' + r.error; e.target.disabled = false; return; }
+    $('#nstatus').textContent = `🗑 已刪除 #${card.dataset.id}`;
+    card.remove();
+    return;
+  }
+  if (!e.target.classList.contains('publish')) return;
   const id = card.dataset.id;
   if (!confirm('確定要發布這則到 Threads？（正式模式會真的公開送出）')) return;
   e.target.disabled = true;

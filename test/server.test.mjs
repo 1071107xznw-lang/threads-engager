@@ -383,6 +383,29 @@ test('listenWithFallback：埠被佔（EADDRINUSE）照樣丟出來，不可以�
   first.server.close();
 });
 
+test('DELETE /api/native/:id 刪掉待發布的草稿', async () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '不想發了' });
+  store.setNativeStatus(id, 'approved');
+  const app = createServer({ store, setupComplete: true, getConfig: () => ({}) });
+  const res = await request(app).delete(`/api/native/${id}`);
+  assert.equal(res.status, 200);
+  assert.equal(store.getNativeDraft(id), null);
+  store.close();
+});
+
+test('DELETE /api/native/:id 擋掉已發布的，並說清楚為什麼', async () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: '已經發出去了' });
+  store.markNativePublished(id, 'post_1');
+  const app = createServer({ store, setupComplete: true, getConfig: () => ({}) });
+  const res = await request(app).delete(`/api/native/${id}`);
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /紀錄/);
+  assert.ok(store.getNativeDraft(id));
+  store.close();
+});
+
 // 綁「真的存在的非本機介面」在測試機上不可攜（每台機器 IP 不同），
 // 所以用假的 app 記錄 listen 呼叫，測的是決策邏輯本身。
 function recordingApp(failFor = () => null) {
