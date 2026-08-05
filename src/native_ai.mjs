@@ -2,6 +2,7 @@ import { defaultRunner } from './ai.mjs';
 import { sanitizeTopic } from './threads_publish.mjs';
 import { summarizeMetrics } from './insights.mjs';
 import { LEGAL_RULES, humorRules } from './compliance.mjs';
+import { PERSONAL_VOICE_RULES } from './brand.mjs';
 
 // 每則草稿的任務分工。成長期要的是「被更多沒追蹤你的人看到」+「有人留言」，
 // 所以預設一批裡觸及型、互動型、品牌型各一，不要三則都在講自己的店。
@@ -122,6 +123,8 @@ export function buildNativePrompt({
     lines.push('');
   }
 
+  lines.push(PERSONAL_VOICE_RULES);
+  lines.push('');
   lines.push(humorRules(humor));
   lines.push('');
   lines.push('## 怎麼寫（Threads 上真的有人看的寫法）');
@@ -195,6 +198,8 @@ export function buildRedTeamPrompt({ text, knowledge = '', humor }) {
   lines.push('以下是一則準備發出的貼文。請逐句找出問題，兩個層次：');
   lines.push('');
   lines.push(LEGAL_RULES);
+  lines.push('');
+  lines.push(PERSONAL_VOICE_RULES);
   lines.push('');
   lines.push('然後才是「會被留言戰、或被抓語病」的地方，特別是：');
   lines.push('- 把有爭議的說法當成唯一正解');

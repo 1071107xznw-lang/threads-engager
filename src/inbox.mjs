@@ -8,6 +8,8 @@
 
 import { defaultRunner } from './ai.mjs';
 import { LEGAL_RULES, humorRules, scanCompliance, summarizeCompliance } from './compliance.mjs';
+import { PERSONAL_VOICE_RULES } from './brand.mjs';
+import { voiceSamplesBlock, fetchVoiceSamples } from './voice.mjs';
 
 // 從一串 conversation 裡挑出「別人留的、而且我還沒回」的留言。純函式，好測。
 // rows：/{media-id}/conversation 的 data（攤平的整串，每筆可能有 replied_to）。
@@ -42,6 +44,7 @@ export function isLowContentReply(text) {
 export function buildInboxPrompt({
   rootPostText = '', reply, persona = '', knowledge = '', humor,
   avoid = [], // 已經被使用者打槍的版本——要明顯不同，不是換句話說
+  voiceSamples = [], // 自己回過別人的留言：對話語氣的真實範本
 }) {
   const lowContent = isLowContentReply(reply?.text);
   const lines = [];
@@ -49,6 +52,8 @@ export function buildInboxPrompt({
   lines.push('');
   lines.push('情境：**這是你自己的貼文，有人在底下留言**。你是主人，要回應這位客人。');
   lines.push('');
+  const voice = voiceSamplesBlock(voiceSamples);
+  if (voice) { lines.push(voice); lines.push(''); }
   if (knowledge) {
     lines.push('【我們敢背書的事實（知識庫）】');
     lines.push(knowledge);
@@ -95,6 +100,8 @@ export function buildInboxPrompt({
   lines.push('');
   lines.push(LEGAL_RULES);
   lines.push('');
+  lines.push(PERSONAL_VOICE_RULES);
+  lines.push('');
   lines.push(humorRules(humor));
   lines.push('');
   lines.push('## 絕對不要');
@@ -115,11 +122,13 @@ export function buildInboxPrompt({
 
 // 產一則回覆草稿。失敗回 null（該則留在佇列，你可以自己手寫）。
 export async function draftInboxReply({
-  rootPostText, reply, persona, knowledge = '', humor, avoid = [],
+  rootPostText, reply, persona, knowledge = '', humor, avoid = [], voiceSamples = [],
   runner = defaultRunner, log = () => {},
 }) {
   try {
-    const raw = await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor, avoid }));
+    const raw = await runner(buildInboxPrompt({
+      rootPostText, reply, persona, knowledge, humor, avoid, voiceSamples,
+    }));
     const text = String(raw ?? '').trim().replace(/^["「『]|["」』]$/g, '').trim();
     if (!text) return null;
     // 產完再掃一次法規紅線。不擋（人工核准才會送出），但要讓人看得到。
@@ -132,9 +141,11 @@ export async function draftInboxReply({
 }
 
 // 產稿全掛時，再跑一次但**不吞例外**，好把真正的原因（例如 claude 沒登入）撈出來給人看。
-async function probeDraftError({ rootPostText, reply, persona, knowledge, humor, runner = defaultRunner }) {
+async function probeDraftError({
+  rootPostText, reply, persona, knowledge, humor, voiceSamples = [], runner = defaultRunner,
+}) {
   try {
-    await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor }));
+    await runner(buildInboxPrompt({ rootPostText, reply, persona, knowledge, humor, voiceSamples }));
     return ''; // 這次成功 → 上一輪應該是零星問題，不誤報
   } catch (e) {
     return String(e.message || e).split('\n')[0];
@@ -168,6 +179,11 @@ export async function scanInbox({
   if (!ownUsername) {
     return { posts: 0, found: 0, inserted: 0, drafted: 0, failed: 0, reason: '拿不到自己的 username，無法分辨誰是別人' };
   }
+
+  // 語氣樣本：自己回過別人的留言。拿不到就空陣列，少一個訊號而已，不擋整輪。
+  const voiceSamples = brand.useOwnReplies === false ? [] : await fetchVoiceSamples({
+    api, accessToken, userId, limit: brand.ownReplySamples ?? 12, log,
+  });
 
   let ownPosts = [];
   try {
@@ -221,6 +237,7 @@ export async function scanInbox({
       persona: brand.replyPersona,
       knowledge,
       humor: brand.humor,
+      voiceSamples,
       runner,
       log,
     });
@@ -232,7 +249,7 @@ export async function scanInbox({
   if (fresh.length && drafted === 0) {
     const probe = await probeDraftError({
       rootPostText: '', reply: { username: fresh[0].author, text: fresh[0].content },
-      persona: brand.replyPersona, knowledge, humor: brand.humor, runner,
+      persona: brand.replyPersona, knowledge, humor: brand.humor, voiceSamples, runner,
     });
     if (probe) {
       log(`⚠️ 所有回覆都產不出來：${probe}`);

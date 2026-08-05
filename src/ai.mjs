@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { PERSONAL_VOICE_RULES } from './brand.mjs';
+import { voiceSamplesBlock } from './voice.mjs';
 
 // 偵測本機是否有可用的 `claude` CLI（AI 產稿唯一的外部相依）。
 // 偵測結果快取一次，避免每次 /api/config 都 spawn。傳 force=true 可重驗。
@@ -21,7 +23,7 @@ export function isAuthFailure(message) {
     .test(String(message ?? ''));
 }
 
-export function buildPrompt(post, persona, { avoid = [] } = {}) {
+export function buildPrompt(post, persona, { avoid = [], voiceSamples = [] } = {}) {
   const avoidBlock = avoid.length ? [
     '',
     '## 🔄 這是重新生成——前面的版本使用者不滿意',
@@ -30,9 +32,11 @@ export function buildPrompt(post, persona, { avoid = [] } = {}) {
     '通常代表太 AI、太乖、太無聊。**換一個完全不同的切入角度**，不是換句話說。',
     '可以換：接不同的點、換情緒（吐槽↔共鳴↔自嘲）、換長度、改成反問。',
   ] : [];
+  const voice = voiceSamplesBlock(voiceSamples);
   return [
     `人設：${persona}`,
     '',
+    ...(voice ? [voice, ''] : []),
     '以下是一則 Threads 貼文，請你：',
     '1. 評估這則貼文與上述人設/主題的相關性，給 0 到 1 的分數（score）。',
     '2. 以人設的口吻寫一則繁體中文回覆草稿（draft），針對貼文內容、自然、有價值、不推銷。',
@@ -41,6 +45,8 @@ export function buildPrompt(post, persona, { avoid = [] } = {}) {
     `貼文讚數：${post.likes}`,
     `貼文內容：${post.content}`,
     ...avoidBlock,
+    '',
+    PERSONAL_VOICE_RULES,
     '',
     '只輸出一個 JSON 物件，格式：{"score": 數字, "draft": "字串"}，不要其他文字。',
   ].join('\n');
@@ -87,8 +93,10 @@ export function defaultRunner(prompt) {
   });
 }
 
-export async function scoreAndDraft({ post, persona, threshold, avoid = [], runner = defaultRunner }) {
-  const raw = await runner(buildPrompt(post, persona, { avoid }));
+export async function scoreAndDraft({
+  post, persona, threshold, avoid = [], voiceSamples = [], runner = defaultRunner,
+}) {
+  const raw = await runner(buildPrompt(post, persona, { avoid, voiceSamples }));
   const { score, draft } = parseResult(raw);
   return { score, draft: score >= threshold ? draft : null };
 }

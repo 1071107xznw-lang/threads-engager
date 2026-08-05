@@ -212,6 +212,18 @@ export function createStore(dbPath) {
     setNativeStatus(id, status) {
       db.prepare('UPDATE native_drafts SET status=? WHERE id=?').run(status, id);
     },
+    // 刪掉一則草稿（待審／已核准／已略過都可以）。
+    // 已發布的擋著不給刪：那是「發生過什麼」的紀錄，刪掉就查不到當初發了什麼。
+    // publishing 也擋——正在送出的中途刪掉會留下無主的 container。
+    // 回 { deleted: true } 或 { deleted: false, reason }，讓上層決定要不要報錯。
+    deleteNativeDraft(id) {
+      const row = db.prepare('SELECT status FROM native_drafts WHERE id=?').get(id);
+      if (!row) return { deleted: false, reason: 'not_found' };
+      if (row.status === 'published') return { deleted: false, reason: 'published' };
+      if (row.status === 'publishing') return { deleted: false, reason: 'publishing' };
+      db.prepare('DELETE FROM native_drafts WHERE id=?').run(id);
+      return { deleted: true };
+    },
     // 核准 + 排程一次到位：設 topic/scheduledAt，狀態改 approved
     setNativeSchedule(id, scheduledAt, topic = null) {
       db.prepare(

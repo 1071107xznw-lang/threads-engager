@@ -284,3 +284,31 @@ test('scanInbox：存下 rootText，之後重新生成才有脈絡', async () =>
   const row = store.listByStatus('me', 'drafted')[0];
   assert.equal(row.rootText, '紅酒也能冰著喝');
 });
+
+// ── 個人自媒體語氣：不要小編腔 ─────────────────────────────
+test('buildInboxPrompt 帶「不准自稱小編」的硬規則', async () => {
+  const { buildInboxPrompt } = await import('../src/inbox.mjs');
+  const p = buildInboxPrompt({ reply: { username: 'bob', text: '好喝欸' }, persona: 'x' });
+  assert.match(p, /不准自稱「小編」/);
+  assert.match(p, /個人自媒體/);
+  assert.match(p, /感謝您的支持/); // 明列禁用的客服罐頭
+});
+
+test('buildInboxPrompt 帶語氣樣本，且標明只學語氣不抄內容', async () => {
+  const { buildInboxPrompt } = await import('../src/inbox.mjs');
+  const p = buildInboxPrompt({
+    reply: { username: 'bob', text: '好喝欸' }, persona: 'x',
+    voiceSamples: ['先到先先享受😂', '哪家醫院，想認識😂'],
+  });
+  assert.match(p, /我平常怎麼回別人的/);
+  assert.match(p, /先到先先享受/);
+  // 樣本是語氣範本，不是事實來源——沒這句就會拿樣本裡的事去編
+  assert.match(p, /不要照抄裡面的字/);
+  assert.match(p, /不要把裡面提到的事當成事實/);
+});
+
+test('buildInboxPrompt 沒有語氣樣本時不留空區塊', async () => {
+  const { buildInboxPrompt } = await import('../src/inbox.mjs');
+  const p = buildInboxPrompt({ reply: { username: 'bob', text: '好喝欸' }, persona: 'x' });
+  assert.doesNotMatch(p, /我平常怎麼回別人的/);
+});

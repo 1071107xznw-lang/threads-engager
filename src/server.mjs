@@ -318,6 +318,17 @@ export function createServer({
       res.json({ ok: true });
     });
     app.post('/api/native/:id/publish', wrap((req) => publishDraft(Number(req.params.id))));
+    // 🗑 刪掉不想發的草稿（含已核准待發布的）。已發布的擋著——那是紀錄，不是待辦。
+    app.delete('/api/native/:id', (req, res) => {
+      const r = store.deleteNativeDraft(Number(req.params.id));
+      if (r.deleted) { res.json({ ok: true }); return; }
+      const msg = {
+        not_found: '找不到這則草稿',
+        published: '已發布的貼文不能刪除（那是發生過什麼的紀錄）。要撤下請到 Threads 上刪。',
+        publishing: '這則正在發布中，請等結果出來再處理',
+      }[r.reason] || '刪不掉';
+      res.status(r.reason === 'not_found' ? 404 : 400).json({ error: msg });
+    });
   }
 
   // 首頁：未完成設定 → 導到精靈；完成 → dashboard

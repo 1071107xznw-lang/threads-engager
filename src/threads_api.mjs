@@ -74,6 +74,18 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'GET', `${graph}/${userId}/threads?${q}`);
     },
 
+    // 自己回過別人的留言。拿來當「對話語氣」的樣本——貼文是「發表」的語氣，
+    // 留言才是「對話」的語氣，要回得像本人就得取自後者。只讀自己的內容。
+    async listOwnReplies({
+      accessToken,
+      userId,
+      limit = 25,
+      fields = 'id,text,timestamp',
+    }) {
+      const q = buildQuery(authed(accessToken, { fields, limit }));
+      return request(fetchImpl, 'GET', `${graph}/${userId}/replies?${q}`);
+    },
+
     // 單則自己貼文的成效（瀏覽/按讚/留言/轉發…）。需 threads_manage_insights 權限；
     // token 沒這個權限時會回 API 錯誤，由上層 fail-open 處理（不擋產稿）。
     async getMediaInsights({
