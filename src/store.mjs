@@ -198,6 +198,11 @@ export function createStore(dbPath) {
       );
       return info.lastInsertRowid;
     },
+    // 至今總共產過幾則原生草稿。用途：goalMix 的輪替起點——
+    // 每批草稿數小於配比長度時，靠它讓後面的目標跨批次輪得到。
+    countNativeDrafts() {
+      return db.prepare('SELECT COUNT(*) AS n FROM native_drafts').get().n;
+    },
     listNativeByStatus(status) {
       return db.prepare(
         'SELECT * FROM native_drafts WHERE status=? ORDER BY createdAt DESC, id DESC'

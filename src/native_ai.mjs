@@ -22,13 +22,39 @@ export const POST_GOALS = {
     brief: '講我們的專業、店裡的日常或在地觀察，建立記憶點。'
       + '要有畫面或有內行細節，不是宣傳文。',
   },
+  // 分享型：追的是「✈️ 分享」而不是讚。分享是唯一會把貼文帶出演算法之外的動作
+  // （進私訊、進限動），所以最值錢。但它的開關跟讚完全不同——
+  // 讀的人腦中要跳出一張具體的臉，才會按下去。
+  //
+  // 實測對照（同一天、讚數幾乎一樣的兩則）：
+  //   冷知識「今天是國際紅綠燈日」→ 206 讚、142 分享
+  //   求推薦「爸爸能喝的酒」    → 197 讚、12 分享
+  // 差 12 倍。差別在前者是「可以脫離貼文單獨存在的事實」，轉述它不必背書。
+  share: {
+    label: '分享型',
+    brief: '目標是「✈️ 分享數」，不是讚。要讓讀的人想**傳給某個特定的人**。'
+      + '四種寫法擇一：'
+      + '(1) 冷知識——一個可以脫離貼文單獨存在的事實（典故、由來、為什麼要這樣做），'
+      + '傳的人不必背書，社交成本零；'
+      + '(2) 對號入座——「每群朋友都有一個…」列 3～5 種，讀的人會想到具體的臉；'
+      + '(3) 懶人包——可收藏的清單，解決一個很具體的難題；'
+      + '(4) 邀請函——把貼文寫成可以直接轉給朋友當邀約用的樣子。'
+      + '結尾可以明講收件人（例：「傳給那個每次都說自己沒醉的朋友」）——'
+      + '大部分人不分享只是因為沒想到要傳給誰。這不是推銷 CTA，不要寫成「歡迎來店」。',
+  },
 };
 
 // 依配比為 n 則草稿指派目標（配比不足就循環）。
-export function assignGoals(n, mix = ['reach', 'engage', 'brand']) {
+//
+// offset：從配比的第幾個開始輪。**每批草稿數 < 配比長度時，這個參數是必要的**——
+// 否則永遠只會產出配比的前 n 個，排在後面的目標一次都輪不到。
+// （實例：draftsPerRun=3、goalMix 有 4 個，share 會永遠被跳過。）
+// 上層傳「目前已有幾則草稿」當 offset，跨批次就會自然輪完一圈。
+export function assignGoals(n, mix = ['reach', 'engage', 'brand'], offset = 0) {
   const valid = (Array.isArray(mix) ? mix : []).filter((k) => k in POST_GOALS);
   const use = valid.length ? valid : Object.keys(POST_GOALS);
-  return Array.from({ length: Math.max(0, n) }, (_, i) => use[i % use.length]);
+  const start = ((Math.trunc(offset) % use.length) + use.length) % use.length; // 負數也要對
+  return Array.from({ length: Math.max(0, n) }, (_, i) => use[(start + i) % use.length]);
 }
 
 // 依品牌人設 + 知識庫 + 趨勢素材 + 自家成效，組出「產生原生貼文草稿」的繁中 prompt。
@@ -119,7 +145,7 @@ export function buildNativePrompt({
       if (g) lines.push(`- 第 ${i + 1} 則【${g.label}】：${g.brief}`);
     });
     lines.push('');
-    lines.push('※ 請照這個順序輸出，並在每則的 goal 欄位回填對應代號（reach／engage／brand）。');
+    lines.push(`※ 請照這個順序輸出，並在每則的 goal 欄位回填對應代號（${Object.keys(POST_GOALS).join('／')}）。`);
     lines.push('');
   }
 
@@ -158,7 +184,7 @@ export function buildNativePrompt({
   lines.push('');
   lines.push(
     `只輸出一個 JSON 陣列，長度 ${n}，格式：`
-    + '[{"text":"貼文內容","angle":"切入點","topic":"主題","goal":"reach/engage/brand"}]，不要其他文字。'
+    + '[{"text":"貼文內容","angle":"切入點","topic":"主題","goal":"reach/engage/brand/share"}]，不要其他文字。'
   );
   return lines.join('\n');
 }
@@ -286,7 +312,8 @@ export async function generateDrafts({
   ownPosts,
   topPosts = [],    // 自己成效最好的貼文（學「什麼有效」）
   searchTerms = [], // 在地／品牌搜尋字
-  goalMix,          // 這批的分工配比，如 ['reach','engage','brand']
+  goalMix,          // 這批的分工配比，如 ['reach','engage','brand','share']
+  goalOffset = 0,   // 從配比第幾個開始輪（每批數量 < 配比長度時，靠它跨批次輪完一圈）
   humor,            // 幽默尺度
   knowledge = '',
   n = 3,
@@ -294,7 +321,7 @@ export async function generateDrafts({
   redTeam = true, // 產完再跑一次紅隊審稿（可關閉以省一次 AI 呼叫）
   log = () => {},
 }) {
-  const goals = assignGoals(n, goalMix);
+  const goals = assignGoals(n, goalMix, goalOffset);
   const prompt = buildNativePrompt({
     persona, hotTrends, newsTitles, tagPosts, ownPosts,
     topPosts, searchTerms, goals, knowledge, humor, n,
