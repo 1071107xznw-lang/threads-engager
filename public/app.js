@@ -18,6 +18,7 @@ const GOALS = {
   engage: { label: '💬 互動', title: '目標是留言數：丟一個超好回答的問題' },
   brand: { label: '🏠 品牌', title: '講專業或店裡日常，建立記憶點' },
   share: { label: '✈️ 分享', title: '目標是分享數：冷知識／對號入座／懶人包／邀請函——讓人想傳給某個特定的人' },
+  story: { label: '😂 段子', title: '完整的笑話：鋪陳→誤導→最後一句翻轉。零品牌提及，才有人轉' },
 };
 const goalBadge = (g) => (GOALS[g]
   ? `<span class="goal ${g}" title="${esc(GOALS[g].title)}">${esc(GOALS[g].label)}</span>`

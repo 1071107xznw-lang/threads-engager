@@ -74,13 +74,14 @@ test('buildNativePrompt：搜尋字當訊號，但明講不要寫成 SEO 文', (
   assert.match(p, /SEO/);
 });
 
-test('parseDrafts：AI 有回 goal 就用它，沒回就照位置補', () => {
+test('parseDrafts：以指派的分工為準，AI 回填只是確認', () => {
+  // 舊行為是「AI 回填優先」，但那讓 goalMix 形同虛設——模型隨口回一個別的目標
+  // 就能蓋掉配比，輪替保證失效（實際踩過：指派 story、回填 share）。
+  // 指派是指令，回填只是確認；不一致代表模型沒照做，不該寫進我們的帳。
   const raw = '[{"text":"一","goal":"engage"},{"text":"二"},{"text":"三","goal":"亂寫"}]';
   const out = parseDrafts(raw, { goals: ['reach', 'engage', 'brand'] });
-  assert.equal(out[0].goal, 'engage'); // AI 回填優先
-  assert.equal(out[1].goal, 'engage'); // 依位置補
-  assert.equal(out[2].goal, 'brand');  // 無效值 → 依位置補
-  assert.ok(Object.keys(POST_GOALS).includes(out[0].goal));
+  assert.deepEqual(out.map((d) => d.goal), ['reach', 'engage', 'brand']);
+  assert.ok(out.every((d) => Object.keys(POST_GOALS).includes(d.goal)));
 });
 
 test('generateDrafts：把 topPosts/searchTerms/分工 都送進 prompt，草稿帶回 goal', async () => {
@@ -301,4 +302,48 @@ test('assignGoals：offset 超過長度或為負都要正常繞回', async () =>
 test('assignGoals：不認得的目標代號要濾掉', async () => {
   const { assignGoals } = await import('../src/native_ai.mjs');
   assert.deepEqual(assignGoals(2, ['share', '亂打的'], 0), ['share', 'share']);
+});
+
+// ── 段子型 ─────────────────────────────────────────────
+test('POST_GOALS.story 帶齊三段結構與「不要提自己的店」', async () => {
+  const { POST_GOALS } = await import('../src/native_ai.mjs');
+  const b = POST_GOALS.story.brief;
+  assert.match(b, /鋪陳/);
+  assert.match(b, /誤導/);
+  assert.match(b, /最後一句翻轉/);
+  // 零品牌提及是它會被轉發的原因，加了就沒人轉
+  assert.match(b, /一個字都不要提自己的店/);
+  assert.match(b, /沒有 hashtag/);
+  // 講完就停——AI 最愛在笑話後面補一句解釋，那會直接殺死笑點
+  assert.match(b, /不要解釋笑點/);
+});
+
+test('assignGoals：五種目標都輪得到', async () => {
+  const { assignGoals } = await import('../src/native_ai.mjs');
+  const mix = ['reach', 'engage', 'brand', 'share', 'story'];
+  const seen = new Set();
+  for (let off = 0; off < 15; off += 3) assignGoals(3, mix, off).forEach((g) => seen.add(g));
+  assert.deepEqual([...seen].sort(), ['brand', 'engage', 'reach', 'share', 'story']);
+});
+
+test('parseDrafts：指派的 goal 說了算，AI 回填不能蓋掉配比', async () => {
+  const { parseDrafts } = await import('../src/native_ai.mjs');
+  // 模型常常自作主張回填別的目標——蓋掉的話 goalMix 的輪替保證就失效了
+  const raw = '[{"text":"甲","goal":"share"},{"text":"乙","goal":"reach"}]';
+  const out = parseDrafts(raw, { goals: ['story', 'brand'] });
+  assert.deepEqual(out.map((d) => d.goal), ['story', 'brand']);
+});
+
+test('parseDrafts：沒有指派時才用 AI 回填的，且只收認得的代號', async () => {
+  const { parseDrafts } = await import('../src/native_ai.mjs');
+  const out = parseDrafts('[{"text":"甲","goal":"story"},{"text":"乙","goal":"亂打的"}]', { goals: [] });
+  assert.deepEqual(out.map((d) => d.goal), ['story', null]);
+});
+
+test('buildNativePrompt：產稿時就帶法規紅線（不能只靠紅隊事後補救）', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', goals: ['story'], n: 1 });
+  assert.match(p, /食品安全衛生管理法/);
+  assert.match(p, /菸酒管理法/);
+  assert.match(p, /段子型/);
 });

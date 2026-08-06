@@ -42,6 +42,26 @@ export const POST_GOALS = {
       + '結尾可以明講收件人（例：「傳給那個每次都說自己沒醉的朋友」）——'
       + '大部分人不分享只是因為沒想到要傳給誰。這不是推銷 CTA，不要寫成「歡迎來店」。',
   },
+  // 段子：分享率最高的形式，但也最難寫——不好笑的笑話比不發還糟。
+  //
+  // 為什麼跟 share 分開：share 的四種寫法都是「有用的資訊」，段子是「純娛樂」，
+  // craft 完全不同（要鋪陳、要誤導、要最後一句翻轉），失敗模式也不同。
+  //
+  // 參考基準（實際觀察到的一則）：3,203 讚 / 326 分享 ≈ 10% 分享率。
+  // 那則的結構是：高樓酒吧 → 有人示範「飛行」這杯喝了會飛 → 跟著喝的人摔死 →
+  // 最後一句「超人，你喝醉之後真的很靠北」把前面全部重寫。
+  story: {
+    label: '段子型',
+    brief: '寫一則**完整的笑話或短故事**，目標是「有人願意把它轉述給別人」。'
+      + '結構三段：(1) 平常的鋪陳；(2) 一個讓人以為懂了的誤導；'
+      + '(3) **最後一句翻轉**——看完會想倒回去重看的那種。'
+      + '排版：每句一行、大量斷行，不要寫成一整塊。'
+      + '素材從酒吧世界取：調酒的名字與典故、酒客的類型、吧檯後面才看得到的事。'
+      + '**懂酒的人會多笑一層，不懂的人也看得懂**——這是被瘋傳的關鍵。'
+      + '講完就停，**絕對不要解釋笑點**，不要補「是不是很好笑」這種話。'
+      + '**一個字都不要提自己的店**，沒有 hashtag、沒有 CTA、沒有地址——'
+      + '零品牌提及正是它會被轉發的原因，加了就沒人轉了。',
+  },
 };
 
 // 依配比為 n 則草稿指派目標（配比不足就循環）。
@@ -149,6 +169,10 @@ export function buildNativePrompt({
     lines.push('');
   }
 
+  // 法規要在**產稿時**就進去，不能只靠後面的紅隊審稿。
+  // 踩到紅線的貼文（尤其段子）是整則要重寫，不是事後改幾個字救得回來的。
+  lines.push(LEGAL_RULES);
+  lines.push('');
   lines.push(PERSONAL_VOICE_RULES);
   lines.push('');
   lines.push(humorRules(humor));
@@ -184,7 +208,7 @@ export function buildNativePrompt({
   lines.push('');
   lines.push(
     `只輸出一個 JSON 陣列，長度 ${n}，格式：`
-    + '[{"text":"貼文內容","angle":"切入點","topic":"主題","goal":"reach/engage/brand/share"}]，不要其他文字。'
+    + '[{"text":"貼文內容","angle":"切入點","topic":"主題","goal":"reach/engage/brand/share/story"}]，不要其他文字。'
   );
   return lines.join('\n');
 }
@@ -207,7 +231,10 @@ export function parseDrafts(raw, { maxLen = 500, goals = [] } = {}) {
       text,
       angle: typeof item.angle === 'string' ? item.angle.trim() : null,
       topic: sanitizeTopic(item.topic), // AI 建議的主題（整理過；無效則 null）
-      goal: (echoed in POST_GOALS) ? echoed : (goals[i] || null), // 分工：AI 回填優先，否則照位置
+      // 分工以**我們指派的**為準。AI 回填只在沒有指派時當備援——
+      // 反過來的話，模型隨口回一個別的目標就會蓋掉配比，goalMix 的輪替保證會失效
+      // （實際踩過：指派 story、模型回填 share，徽章標錯、輪替也算錯）。
+      goal: goals[i] || ((echoed in POST_GOALS) ? echoed : null),
     });
   });
   if (!out.length) throw new Error('AI 未產出有效草稿');
