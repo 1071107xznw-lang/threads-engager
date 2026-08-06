@@ -21,14 +21,16 @@
         → 政策本文已備妥於 [`privacy-policy.md`](privacy-policy.md)；
         用 GitHub Pages 發佈（Settings → Pages → `main` / `/docs`）即得公開網址
   - [ ] 商家/開發者驗證（Meta 若要求）
-- [ ] **確認要送審的權限**（Use cases → Access the Threads API → Customize）：
+- [ ] **確認要送審的權限**（左側 **Use cases → Access the Threads API → Customize**
+      ——不是舊版的 App Review 選單）：
   - [ ] `threads_basic` — 必備（讀 profile）
   - [ ] `threads_content_publish` — 發原生貼文 **和** 送出回覆都靠它
   - [ ] `threads_keyword_search` — 搜別人的公開貼文（聆聽 + 趨勢）
   - [ ] `threads_manage_insights` — 讀**自己**貼文的成效（瀏覽/讚/留言/轉發）。供 dashboard
         「成效」分頁與「拿表現最好的貼文當產稿範本」用。只讀自家資料，通常比其他進階權限好過；
         沒有也不會壞（自動略過這個訊號、照常產稿）
-  - [ ] `threads_manage_replies` — 只有要「管理自己貼文底下的留言（隱藏/回覆）」才需要；單純回別人的串**不一定**要，先確認再決定
+  - [ ] `threads_manage_replies` — **必送**（2026-08 實測：`/conversation`、`/{uid}/replies` 都要它，
+        漏送上 Live 後「💬 留言區」會壞）
 - [ ] **準備 App Review 素材**（每個進階權限都要）：
   - [ ] 一段**螢幕錄影**，示範完整流程：`搜尋候選串 → AI 產草稿 → 進審核佇列 → 人工按核准 → 才送出`
   - [ ] 幾張截圖（dashboard 的回覆審核畫面、核准按鈕）
