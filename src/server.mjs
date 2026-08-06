@@ -11,7 +11,8 @@ import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
 import { publishText, validateTopic, validateText } from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
-import { suggestTopic as nativeSuggestTopic } from './native_ai.mjs';
+import { suggestTopic as nativeSuggestTopic, regenerateDraft } from './native_ai.mjs';
+import { rankTopics } from './topic_rank.mjs';
 import { rankOwnPosts } from './insights.mjs';
 import { scanInbox, draftInboxReply } from './inbox.mjs';
 import { polishDraft } from './polish.mjs';
@@ -188,6 +189,7 @@ export function createServer({
   regenerateReply, // 🔄 重新生成某則回覆草稿（換個角度）
   runSend,
   runGenerate,
+  regenerateOne, // 🔄 單則重新生成：({ previousText, goal, reason }) => Promise<{text, angle, topic, reviewNote}>
   suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
   polishPost, // ✨ 優化自己寫的貼文：({ text }) => Promise<{original, text, hook, ...}>
   findHot, // 🔍 關鍵字找熱門串：({ keyword }) => Promise<{results, ...}>
@@ -372,6 +374,36 @@ export function createServer({
         res.json({ ok: true });
       } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
     });
+    // 🔄 這則不滿意，換一則。沿用原本的分工（goal），只換內容。
+    // 只給待審的用：已核准/發布中/已發布的重生會讓「人核准的內容」跟「實際發出的內容」對不起來。
+    if (regenerateOne) {
+      app.post('/api/native/:id/regenerate', wrap(async (req) => {
+        const id = Number(req.params.id);
+        const row = store.getNativeDraft(id);
+        if (!row) { const e = new Error('找不到這則草稿'); e.status = 404; throw e; }
+        if (row.status !== 'drafted') {
+          const why = {
+            approved: '這則已經核准了。要換內容請先按 🗑 刪除，或直接在框裡自己改。',
+            publishing: '這則正在發布中，請等結果出來再處理。',
+            published: '已發布的貼文不能重新生成（那是發生過什麼的紀錄）。',
+            skipped: '這則已經略過了。',
+          }[row.status] || `狀態是 ${row.status}，不能重新生成`;
+          const e = new Error(why); e.status = 400; throw e;
+        }
+        const fresh = await regenerateOne({
+          previousText: row.editedText || row.draftText,
+          goal: row.goal || null,
+          reason: String(req.body?.reason ?? '').trim(),
+        });
+        store.replaceNativeDraftText(id, {
+          draftText: fresh.text,
+          angle: fresh.angle || row.angle,
+          topic: fresh.topic || null,
+          reviewNote: fresh.reviewNote || null,
+        });
+        return { ok: true, ...withCompliance([store.getNativeDraft(id)])[0] };
+      }));
+    }
     app.post('/api/native/:id/skip', (req, res) => {
       store.setNativeStatus(Number(req.params.id), 'skipped');
       res.json({ ok: true });
@@ -502,6 +534,33 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     runGenerate: () => {
       const { settings, api, accessToken } = currentAuth();
       return runGeneration({ settings, brand: currentBrand(), store, accessToken, api, configDir });
+    },
+    // 🔄 單則重新生成。訊號取跟 polishPost 同一套的輕量版——不重跑整條生產線
+    //（不搜站內、不讀 insights），因為使用者按下去是希望「馬上換一則」。
+    regenerateOne: async ({ previousText, goal, reason }) => {
+      const { settings, api, accessToken } = currentAuth();
+      const brand = currentBrand();
+      let ownRaw = [];
+      try {
+        const res = await api.listOwnPosts({ accessToken, userId: settings.userId, limit: 25 });
+        ownRaw = (res.data || []).filter((p) => p && p.text);
+      } catch { /* 拿不到就少一個語氣訊號，不擋重生 */ }
+      const hotTrends = await fetchTrendingTopics({ feeds: brand.hotTrendsFeeds, log: () => {} });
+      return regenerateDraft({
+        persona: brand.persona,
+        goal,
+        previousText,
+        reason,
+        hotTrends,
+        ownPosts: ownRaw.slice(0, 15).map((p) => p.text),
+        searchTerms: [...new Set([
+          ...(brand.localSearchTerms || []), ...(brand.tags || []),
+        ].map((t) => String(t).trim()).filter(Boolean))].slice(0, 25),
+        audienceInterests: brand.audienceInterests || [],
+        topicPool: rankTopics({ hotTrends }),
+        humor: brand.humor,
+        knowledge: loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null),
+      });
     },
     suggestTopic: ({ text }) => nativeSuggestTopic({ text, persona: currentBrand().persona }),
     polishPost: async ({ text }) => {

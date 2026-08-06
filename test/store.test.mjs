@@ -235,3 +235,35 @@ test('countNativeDrafts：供 goalMix 跨批次輪替用', () => {
   assert.equal(store.countNativeDrafts(), 2);
   store.close();
 });
+
+test('replaceNativeDraftText：換內容並清掉手改的 editedText', () => {
+  const s = createStore(':memory:');
+  const id = s.insertNativeDraft({ draftText: '舊的', angle: '舊角度', topic: '舊主題', goal: 'story' });
+  s.editNativeDraft(id, '手改過的');
+  s.replaceNativeDraftText(id, { draftText: '新的', angle: '新角度', topic: '新主題', reviewNote: '改了X' });
+  const row = s.getNativeDraft(id);
+  assert.equal(row.draftText, '新的');
+  assert.equal(row.editedText, null, 'editedText 必須清掉，否則舊內容會蓋住新稿');
+  assert.equal(row.angle, '新角度');
+  assert.equal(row.topic, '新主題');
+  assert.equal(row.reviewNote, '改了X');
+  assert.equal(row.goal, 'story', '分工不能被換掉');
+  assert.equal(row.status, 'drafted');
+  s.close();
+});
+
+test('listPublishedNativeTopics：只回已發布且有主題的', () => {
+  const s = createStore(':memory:');
+  const a = s.insertNativeDraft({ draftText: 'a', topic: '調酒' });
+  s.setNativeStatus(a, 'approved');
+  s.claimNativeForPublish(a);
+  s.markNativePublished(a, 'post_a');
+  const b = s.insertNativeDraft({ draftText: 'b', topic: '電競' }); // 還沒發布
+  assert.ok(b);
+  const c = s.insertNativeDraft({ draftText: 'c' });                // 已發布但沒主題
+  s.setNativeStatus(c, 'approved');
+  s.claimNativeForPublish(c);
+  s.markNativePublished(c, 'post_c');
+  assert.deepEqual(s.listPublishedNativeTopics(), [{ publishedPostId: 'post_a', topic: '調酒' }]);
+  s.close();
+});

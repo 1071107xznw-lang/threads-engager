@@ -114,8 +114,22 @@ test('buildNativePrompt：含人化寫法、反 AI 腔、反商業腔規則', ()
   assert.match(p, /在這個◯◯的時代/);
   assert.match(p, /商業腔/);
   assert.match(p, /立即預約|歡迎來店裡坐坐/);
-  assert.match(p, /不放連結/);
   assert.match(p, /會被抓語病的權威斷言/);
+});
+
+test('buildNativePrompt：不再禁連結（Meta 2025 已反向調整排序）', () => {
+  // 這條原本是「不放連結（會壓觸及）」。Meta 後來反過來調整，帶連結的貼文表現反而較好，
+  // 留著舊規則等於叫 AI 主動避開一個現在有加分的東西。
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.doesNotMatch(p, /不放連結/);
+  assert.match(p, /連結不再被降權/);
+});
+
+test('buildNativePrompt：明著要互動會被降權，要寫進規則', () => {
+  // Mosseri 已確認 engagement bait（叫人按讚/留言/分享/追蹤）會被降權。
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.match(p, /engagement bait/);
+  assert.match(p, /不准明著要互動/);
 });
 
 test('buildNativePrompt：有知識庫時要求只用它做肯定陳述', () => {
@@ -275,8 +289,11 @@ test('POST_GOALS 有 share，且講的是分享不是讚', async () => {
   for (const kw of ['冷知識', '對號入座', '懶人包', '邀請函']) {
     assert.match(POST_GOALS.share.brief, new RegExp(kw), `缺少寫法：${kw}`);
   }
-  // 不可以退化成推銷
-  assert.match(POST_GOALS.share.brief, /不是推銷 CTA/);
+  // 明示 CTA 現在會被當 engagement bait 降權——這條原本是「結尾可以明講收件人」，
+  // 平台後來把它變成負債了。分享要靠內容具體到讓人自己想到一張臉，不是靠叫的。
+  assert.match(POST_GOALS.share.brief, /不准明著叫人分享/);
+  assert.match(POST_GOALS.share.brief, /engagement bait/);
+  assert.match(POST_GOALS.share.brief, /讓讀者自己想到一張臉/);
 });
 
 test('assignGoals：每批數量 < 配比長度時，靠 offset 跨批次輪完一圈', async () => {
@@ -356,6 +373,98 @@ test('buildNativePrompt：蹭熱搜不再要求「只挑跟店有關的」', asy
   const p = buildNativePrompt({ persona: 'x', n: 1 });
   assert.doesNotMatch(p, /只挑能跟店/);
   assert.match(p, /硬轉回產品比不蹭還糟/);
+});
+
+// ── 一批 15 則：每則要蹭不同主題 ──
+test('buildNativePrompt：一批多則時，明文禁止兩則蹭同一個主題', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({
+    persona: 'x', hotTrends: [{ topic: 'A' }, { topic: 'B' }], n: 15,
+  });
+  assert.match(p, /每則蹭一個不同的主題，不准兩則蹭同一個/);
+});
+
+test('buildNativePrompt：單則時不出現「不准重複」（沒有可重複的對象）', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', hotTrends: [{ topic: 'A' }], n: 1 });
+  assert.doesNotMatch(p, /不准兩則蹭同一個/);
+});
+
+test('buildNativePrompt：熱搜清單長度要跟著批次量走', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  // 一批 15 則卻只給 12 個主題的話，後面幾則保證撞題
+  const hotTrends = Array.from({ length: 20 }, (_, i) => ({ topic: `主題${i}` }));
+  const p = buildNativePrompt({ persona: 'x', hotTrends, n: 15 });
+  assert.match(p, /主題14/);
+  const small = buildNativePrompt({ persona: 'x', hotTrends, n: 3 });
+  assert.doesNotMatch(small, /主題14/); // 小批次維持原本的 12 個
+});
+
+// ── 主題候選清單 ──
+test('buildNativePrompt：有主題候選就要求優先從清單挑', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({
+    persona: 'x', n: 1,
+    topicPool: [{ topic: '調酒', traffic: '20K+', ownNote: '自家用過 3 次，平均 900 瀏覽' }],
+  });
+  assert.match(p, /主題優先從下面這份清單挑/);
+  assert.match(p, /調酒/);
+  assert.match(p, /熱度 20K\+/);
+  assert.match(p, /自家用過 3 次/);
+});
+
+test('buildNativePrompt：沒有主題候選時不出現該段落', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  assert.doesNotMatch(buildNativePrompt({ persona: 'x', n: 1 }), /主題優先從下面這份清單挑/);
+});
+
+// ── 重新生成 ──
+test('buildNativePrompt：avoid 要把上一版寫進去，並要求重寫而非潤飾', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({
+    persona: 'x', n: 1, goals: ['story'],
+    avoid: { text: '上一版的爛稿', reason: '太像廣告' },
+  });
+  assert.match(p, /這是「重新生成」/);
+  assert.match(p, /上一版的爛稿/);
+  assert.match(p, /太像廣告/);
+  assert.match(p, /重寫一則全新的/);
+});
+
+test('buildNativePrompt：沒有 avoid 就不出現重新生成的段落', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  assert.doesNotMatch(buildNativePrompt({ persona: 'x', n: 1 }), /這是「重新生成」/);
+  // 空字串也算沒有——不要塞一段空的指示進去
+  assert.doesNotMatch(
+    buildNativePrompt({ persona: 'x', n: 1, avoid: { text: '  ' } }), /這是「重新生成」/
+  );
+});
+
+test('regenerateDraft：沿用原本的分工，不換 goal', async () => {
+  const { regenerateDraft } = await import('../src/native_ai.mjs');
+  let seen = '';
+  const out = await regenerateDraft({
+    persona: 'x', goal: 'story', previousText: '舊的', reason: '梗太冷',
+    redTeam: false,
+    runner: async (prompt) => { seen = prompt; return '[{"text":"新的","goal":"share"}]'; },
+  });
+  assert.match(seen, /段子型/);   // 指派的分工要進 prompt
+  assert.match(seen, /舊的/);
+  assert.equal(out.text, '新的');
+  // 模型回填 share 也不能蓋掉指派的 story
+  assert.equal(out.goal, 'story');
+});
+
+test('regenerateDraft：紅隊改寫過要回報 reviewNote', async () => {
+  const { regenerateDraft } = await import('../src/native_ai.mjs');
+  const out = await regenerateDraft({
+    persona: 'x', goal: 'reach', previousText: '舊的',
+    runner: async (prompt) => (prompt.includes('最愛抓語病')
+      ? '{"text":"改過的","changed":true,"note":"拿掉療效說法"}'
+      : '[{"text":"新的"}]'),
+  });
+  assert.equal(out.text, '改過的');
+  assert.equal(out.reviewNote, '拿掉療效說法');
 });
 
 test('generateDrafts：讀者輪廓要傳到 prompt 裡（不能在中間掉包）', async () => {
