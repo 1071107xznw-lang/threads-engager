@@ -14,8 +14,36 @@
 | 隱私權政策 URL | ✅ **已上線** | 見下方，直接複製 |
 | Token 有效 | ✅ 實測 `@argotaipei` 通過 | 到期 2026-09-26，錄影前不會過期 |
 | 權限實際可呼叫 | ✅ 逐一實測 200 | 見第 1 步 |
-| App 圖示 / 顯示名稱 / 類別 | 待你填 | Basic settings,類別選 **Business** |
-| 商家/開發者驗證 | Meta 若要求才需要 | 依畫面指示 |
+| App 圖示 / 顯示名稱 / 類別 | 待你填 | Basic settings,類別選 **Business and pages** |
+| **企業驗證 / Business verification** | ⛔️ **前置關卡** | 見下方——**沒過的話權限審核不會動** |
+| **每個權限 30 天內成功呼叫過** | ✅ 2026-08-06 全部有紀錄 | 見下方 |
+
+### ⛔️ 企業驗證：擋在最前面的那一關
+
+**所有申請 Advanced Access 的 App 都要先通過 Business Verification。**
+這是**獨立於 App Review 的另一道流程**，要提交公司登記文件（營利事業登記證等），可能要幾個工作天。
+
+左側選單找 **企業驗證 / Business verification**，狀態要是 **Verified**。
+沒過的話，權限申請送出去也不會被處理——**卡在這裡就先辦它，別浪費時間填表單**。
+
+### ⏱ 每個權限都要有「30 天內成功呼叫過」的紀錄
+
+Meta 規定：送審前，**每個要申請的權限都必須至少成功呼叫過一次，且在 30 天內**。
+沒有呼叫紀錄的權限會被直接退。
+
+2026-08-06 實測，六個全部有當日紀錄：
+
+| 權限 | 呼叫過的端點 |
+|---|---|
+| `threads_basic` | `/me`、`/{uid}/threads` |
+| `threads_content_publish` | 發布原生貼文 |
+| `threads_keyword_search` | `/keyword_search` |
+| `threads_manage_insights` | `/{media-id}/insights` |
+| `threads_read_replies` | `/{media-id}/conversation`、`/{uid}/replies` |
+| `threads_manage_replies` | 送出一則已核准的回覆 |
+
+**別拖太久送**——超過 30 天要重新跑一輪才有效。
+懶得一個個打的話，把 dashboard 開起來按一輪（產草稿 → 掃留言區 → 成效 → 核准送出一則）就全中了。
 
 > 🔑 **`.env` 裡的 `THREADS_ACCESS_TOKEN` 已於 2026-07-28 過期**，但工具用的是 DB 裡自動續期後的那顆
 > （`getActiveToken` 優先讀 DB），所以功能正常。`.env` 那顆只有在**切換帳號清空 DB 之後**才會被拿來用——
@@ -343,8 +371,10 @@ threads_manage_replies
 
 ### 6-0　先把材料做完（表單開始後就不能停）
 
+- [ ] ⛔️ **企業驗證已 Verified** ——沒過的話後面全部白做，先去辦
 - [ ] 螢幕錄影（第 3 步分鏡）
 - [ ] 5 張截圖（第 4 步清單）
+- [ ] App 圖示 1024×1024 PNG
 - [ ] 這份文件開著，等一下要複製第 2、5 步的英文段落
 
 ---
@@ -408,7 +438,17 @@ threads_manage_replies
 
 ### 6-4　逐個權限填表（重複 5～6 次）
 
-每按一次 **Request advanced access** 會展開一份表單，三個欄位：
+> ⚠️ **Meta 正在換介面，兩種版型都還存在**，先看你是哪一種：
+>
+> **A. 點下去直接展開表單** —— 就在權限清單那頁填，填完按該權限的 Submit。
+>
+> **B. 點下去只是「加入申請清單」** —— 要再去左側 **App Review → Requests**，
+> 每個權限旁邊有 **Edit / Continue**，點進去才填那三欄；全部填完再按最上面的
+> **Submit for Review**。
+>
+> 兩種要填的內容一模一樣，差別只在填的地方。
+
+不論哪種版型，**每個權限都要單獨填一份表**，三個欄位：
 
 | 表單問你 | 貼哪一段 |
 |---|---|
@@ -439,6 +479,27 @@ threads_manage_replies
 按 **Submit**。
 
 ---
+
+### 6-5b　怎麼確認自己走到哪一步
+
+分不清「還沒送」和「送了在等」的話，照這三個地方查：
+
+| 查哪裡 | 看到什麼 | 代表 |
+|---|---|---|
+| **App settings → Basic** | 圖示/隱私政策/資料刪除/類別**四樣都有值且已存檔** | 6-2 完成 |
+| **企業驗證 / Business verification** | 狀態 **Verified** | 前置關卡過了 |
+| **App Review → Requests** | 空的 | 還沒按 Request advanced access |
+| | 六筆 **Pending** | ✅ **已送出，在等**——沒事做了 |
+| | 幾筆 **Draft / 未完成** | 表單沒填完，回去補三個欄位再 Submit |
+
+**從 API 也能反推**（不必登入後台）：
+
+```bash
+# 仍是 Development：keyword_search 只回自己的貼文
+# 已 Live：開始出現別人的公開貼文
+```
+
+dashboard 狀態列直接寫著「**站內搜尋：關（App 未 Live）**」——那行變了，就是過了。
 
 ### 6-6　送出之後
 
