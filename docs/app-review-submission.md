@@ -277,7 +277,9 @@ https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 
 這段只有你能做——要登入你自己的 Meta 帳號、代表你的商家送件。我不會、也不該代替你登入或按送出。
 
-> ⏱ 材料備齊的話後台操作約 20 分鐘。審核回覆通常 **3–7 個工作天**。
+> ⏱ 材料備齊的話後台操作約 20 分鐘。
+> 審核時間**不一定**：官方沒有承諾天數，社群回報從幾個工作天到**每個權限 2–4 週**都有。
+> 別把上線日期押在特定日期上。
 > ⚠️ **表單中途不能存草稿**，所以第 3、4 步的材料一定要先做完再開始填。
 
 ### 你的 App 資訊（實測撈出來的）
@@ -344,14 +346,27 @@ threads_manage_replies
 
 ### 6-3　找到權限申請頁
 
-左側選單 **應用程式審查 / App Review → 權限和功能 / Permissions and Features**
+> ⚠️ **不是**舊版的「App Review → Permissions and Features」。新版後台改走 **Use cases**，
+> 舊路徑已經不是入口了。
 
-1. 搜尋框輸入 `threads_`
-2. 畫面會列出所有 threads 相關權限，每個右邊有一顆按鈕：
+左側選單 **使用案例 / Use cases** → **Access the Threads API** → 按 **自訂 / Customize**
+
+進去之後才會看到 **權限和功能 / Permissions and Features** 的清單：
+
+1. 搜尋框輸入 `threads_`（或直接看列表）
+2. 每個權限右邊有一顆按鈕：
    - **要求進階存取權 / Request advanced access** ← 要按的是這顆
    - 已經是進階的會顯示 **Advanced access**，那就跳過
 
 `threads_basic` 常常本來就是進階存取權——**顯示已是 Advanced access 就不用送**。
+
+**左側找不到「使用案例」？** 代表 App 建立時沒選 Threads use case。
+先到 **App settings → Basic** 最下面把 **Threads** 產品加上去，選單才會出現。
+
+> 💡 **不必等審核就能繼續用**：把自己的帳號加成 **Threads Tester**
+> （App Dashboard → **App roles → Roles** → Add People → 選 Threads Tester），
+> 測試者帳號可以立刻取得全部五個權限，不需要 App Review。
+> 這不會解鎖 `keyword_search` 搜到別人的貼文（那要 Live），但開發與自用完全夠。
 
 ---
 
@@ -392,6 +407,7 @@ threads_manage_replies
 ### 6-6　送出之後
 
 - 狀態在 **App Review → Requests** 看，會顯示 Pending / Approved / Rejected
+  （送出用 Use cases，但看狀態仍在 App Review 底下）
 - 結果也會寄到 App 管理員的信箱
 - **被退件會寫明理由** → 對照本文件「常見退件原因」修完可**重送，次數不限**
 
