@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import { timingSafeEqual } from 'node:crypto';
 import { createStore } from './store.mjs';
 import { loadEnvFile, resolveSettings } from './env.mjs';
@@ -55,16 +56,36 @@ export function basicAuth(password) {
   };
 }
 
-// 綁定監聽介面，綁不上就退回本機。
+// Tailscale 的 IPv4 一律落在 CGNAT 區段 **100.64.0.0/10**（100.64.x.x ～ 100.127.x.x）。
+// 不能只比對 /^100\./ ——100.128 以上是一般公網位址，抓錯會綁到不該綁的介面。
+export function isTailscaleIPv4(addr) {
+  const m = /^100\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(String(addr ?? '').trim());
+  if (!m) return false;
+  const second = Number(m[1]);
+  return second >= 64 && second <= 127;
+}
+
+// HOST=tailscale → 啟動時自己找出當下的 Tailscale 位址。
 //
-// 為什麼要這樣：HOST 若指向一個「當下不在這台機器上」的位址（最典型的情況是綁了
-// Tailscale 的 100.x，然後 Tailscale 沒開），listen 會噴 EADDRNOTAVAIL 讓整個行程死掉。
-// launchd 看到行程死掉就重新拉起來，於是變成無聲的重啟迴圈——使用者看到的只有
-// 「連不到」，真正的原因埋在日誌裡。退回 127.0.0.1 至少讓本機還能用，
-// 而且把原因大聲印出來。
+// 為什麼要這個：Tailscale 重新登入會換發 IP（實際踩過：.107 → .93）。
+// .env 寫死 IP 的話，某天早上就會突然「手機連不到」，而真正的原因
+// （EADDRNOTAVAIL）埋在日誌裡。寫 tailscale 就永遠不用改設定。
 //
-// 只對 EADDRNOTAVAIL 退回。EADDRINUSE（埠被佔）是另一回事，退回只會蓋掉真正的衝突，
-// 那種要讓它照常爆出來。
+// 找不到就回 127.0.0.1（而不是丟錯）：Tailscale 沒開時本機至少還能用，
+// 跟 listenWithFallback 的取捨一致。
+export function resolveHost(host, { interfaces = networkInterfaces, warn = console.error } = {}) {
+  if (String(host ?? '').trim().toLowerCase() !== 'tailscale') return host;
+  for (const addrs of Object.values(interfaces() || {})) {
+    for (const a of addrs || []) {
+      if (a && a.family === 'IPv4' && isTailscaleIPv4(a.address)) return a.address;
+    }
+  }
+  warn('\n⚠️  HOST=tailscale，但這台機器上找不到 Tailscale 位址（100.64–127.x.x）。');
+  warn('   多半是 Tailscale 沒開。先綁 127.0.0.1，本機仍可使用。');
+  warn('   把 Tailscale 打開再重啟服務，就會自動抓到新位址、不必改設定。\n');
+  return '127.0.0.1';
+}
+
 export const isLoopbackHost = (h) => h === '127.0.0.1' || h === 'localhost' || h === '::1';
 export const isWildcardHost = (h) => h === '0.0.0.0' || h === '::';
 
@@ -77,6 +98,16 @@ function listenOn(app, port, host) {
   });
 }
 
+// 綁定監聽介面，綁不上就退回本機。
+//
+// 為什麼要這樣：HOST 若指向一個「當下不在這台機器上」的位址（最典型的情況是綁了
+// Tailscale 的 100.x，然後 Tailscale 沒開），listen 會噴 EADDRNOTAVAIL 讓整個行程死掉。
+// launchd 看到行程死掉就重新拉起來，於是變成無聲的重啟迴圈——使用者看到的只有
+// 「連不到」，真正的原因埋在日誌裡。退回 127.0.0.1 至少讓本機還能用，
+// 而且把原因大聲印出來。
+//
+// 只對 EADDRNOTAVAIL 退回。EADDRINUSE（埠被佔）是另一回事，退回只會蓋掉真正的衝突，
+// 那種要讓它照常爆出來。
 export async function listenWithFallback({
   app, port, host, fallbackHost = '127.0.0.1', warn = console.error, alsoLocal = true,
 }) {
@@ -88,7 +119,7 @@ export async function listenWithFallback({
   } catch (err) {
     if (err.code !== 'EADDRNOTAVAIL') throw err;
     warn(`\n⚠️  綁不上 ${host}:${port}——這個位址現在不在這台機器上。`);
-    if (/^100\./.test(host)) warn('   看起來是 Tailscale 的 IP：Tailscale 沒開（或換了 IP），這個位址就會消失。');
+    if (isTailscaleIPv4(host)) warn('   看起來是 Tailscale 的 IP：Tailscale 沒開（或換了 IP），這個位址就會消失。\n   小提醒：HOST 改寫成 `tailscale` 就會自動抓當下的位址，不必再手動改。');
     warn(`   已退回 ${fallbackHost}:${port}，本機仍可使用；其他裝置（含手機）連不到。`);
     warn('   要恢復遠端連線：確認 Tailscale 開著、HOST 是當下正確的 IP，再重啟服務。\n');
     server = await listenOn(app, port, fallbackHost);
@@ -555,7 +586,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // 這個 dashboard 能用你的身分發文，所以：
   //   · 只在自己電腦上用          → HOST=127.0.0.1
   //   · 要用手機/遠端連（Tailscale）→ 留預設，但密碼要夠強
-  const HOST = process.env.HOST || '0.0.0.0';
+  // HOST 可以寫成 tailscale——啟動時自動抓當下的 Tailscale 位址，IP 換發也不必改設定。
+  const HOST = resolveHost(process.env.HOST || '0.0.0.0');
   // 底下所有訊息都以「真正綁上的」介面為準（boundHost），不是使用者要求的那個。
   // 退回本機之後還印「手機連得到」就是騙人。
   const { host: boundHost, fellBack, alsoLocal } = await listenWithFallback({ app, port: PORT, host: HOST });
@@ -579,7 +611,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log('   只在自己電腦上用 → HOST=127.0.0.1；要手機連又不想開放區網 → 綁 Tailscale IP。');
   } else {
     // 綁單一介面（典型用途：Tailscale 的 100.x）——只有那個網路上的裝置連得到
-    const via = /^100\./.test(boundHost) ? 'Tailscale 私人網路' : `介面 ${boundHost}`;
+    const via = isTailscaleIPv4(boundHost) ? 'Tailscale 私人網路' : `介面 ${boundHost}`;
     console.log(`🔐 只綁 ${boundHost}——只有${via}上的裝置連得到，區網其他人碰不到。`
       + (dashboardPassword ? '' : ' ⚠️ 但沒設密碼！'));
     if (alsoLocal) console.log(`   📱 手機/遠端：http://${boundHost}:${PORT}　💻 這台機器：http://localhost:${PORT}`);

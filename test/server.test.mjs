@@ -463,3 +463,68 @@ test('listenWithFallback：退回本機之後不會再多綁一次本機', async
   assert.equal(r.fellBack, true);
   assert.equal(r.alsoLocal, false);
 });
+
+// ── HOST=tailscale 自動抓位址 ──────────────────────────
+// 起因：Tailscale 重新登入會換發 IP（實際踩過 .107 → .93），.env 寫死就會某天突然
+// 「手機連不到」，而原因埋在日誌裡。
+
+test('isTailscaleIPv4：只認 CGNAT 100.64.0.0/10，不是所有 100.x', async () => {
+  const { isTailscaleIPv4 } = await import('../src/server.mjs');
+  // 真的是 Tailscale 的
+  for (const ok of ['100.64.0.1', '100.127.255.255', '100.119.253.93', '100.88.137.107']) {
+    assert.equal(isTailscaleIPv4(ok), true, ok);
+  }
+  // 100.x 但不在 CGNAT 區段——這些是一般公網位址，抓錯會綁到不該綁的介面
+  for (const no of ['100.63.255.255', '100.128.0.1', '100.5.5.5', '100.200.1.1']) {
+    assert.equal(isTailscaleIPv4(no), false, no);
+  }
+  for (const no of ['192.168.1.120', '127.0.0.1', '10.0.0.1', '', null, undefined, 'tailscale']) {
+    assert.equal(isTailscaleIPv4(no), false, String(no));
+  }
+});
+
+test('resolveHost：不是 tailscale 就原樣回傳', async () => {
+  const { resolveHost } = await import('../src/server.mjs');
+  const never = () => { throw new Error('不該去列舉網路介面'); };
+  for (const h of ['0.0.0.0', '127.0.0.1', '100.119.253.93']) {
+    assert.equal(resolveHost(h, { interfaces: never }), h);
+  }
+});
+
+test('resolveHost：HOST=tailscale 抓出當下的 Tailscale 位址', async () => {
+  const { resolveHost } = await import('../src/server.mjs');
+  const interfaces = () => ({
+    lo0: [{ family: 'IPv4', address: '127.0.0.1' }],
+    en0: [{ family: 'IPv4', address: '192.168.1.120' }],
+    utun3: [{ family: 'IPv6', address: 'fd7a:115c:a1e0::1' },
+            { family: 'IPv4', address: '100.119.253.93' }],
+  });
+  assert.equal(resolveHost('tailscale', { interfaces, warn: () => {} }), '100.119.253.93');
+  // 大小寫與空白都要吃
+  assert.equal(resolveHost('  TailScale ', { interfaces, warn: () => {} }), '100.119.253.93');
+});
+
+test('resolveHost：Tailscale 沒開 → 退回本機並說清楚，不是丟錯', async () => {
+  const { resolveHost } = await import('../src/server.mjs');
+  const warnings = [];
+  const interfaces = () => ({
+    lo0: [{ family: 'IPv4', address: '127.0.0.1' }],
+    en0: [{ family: 'IPv4', address: '192.168.1.120' }],
+  });
+  assert.equal(resolveHost('tailscale', { interfaces, warn: (m) => warnings.push(m) }), '127.0.0.1');
+  const all = warnings.join('\n');
+  assert.match(all, /找不到 Tailscale 位址/);
+  assert.match(all, /把 Tailscale 打開再重啟服務/);
+});
+
+test('resolveHost：不會把非 CGNAT 的 100.x 誤認成 Tailscale', async () => {
+  const { resolveHost } = await import('../src/server.mjs');
+  const interfaces = () => ({ en0: [{ family: 'IPv4', address: '100.200.1.1' }] });
+  assert.equal(resolveHost('tailscale', { interfaces, warn: () => {} }), '127.0.0.1');
+});
+
+test('resolveHost：網路介面列舉回空值也不能爆', async () => {
+  const { resolveHost } = await import('../src/server.mjs');
+  assert.equal(resolveHost('tailscale', { interfaces: () => null, warn: () => {} }), '127.0.0.1');
+  assert.equal(resolveHost('tailscale', { interfaces: () => ({ en0: null }), warn: () => {} }), '127.0.0.1');
+});
