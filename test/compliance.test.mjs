@@ -144,3 +144,41 @@ test('紅隊：不准把梗改掉（只拆彈，不消毒）', async () => {
   assert.match(p, /不要把梗改掉/);
   assert.match(p, /拆彈，不是消毒/);
 });
+
+// ── 菸酒管理法 §37（酒類廣告；跟食安法各罰各的）──────────
+test('LEGAL_RULES 帶菸酒管理法 §37，且點名「危險活動」那條', async () => {
+  const { LEGAL_RULES } = await import('../src/compliance.mjs');
+  assert.match(LEGAL_RULES, /菸酒管理法/);
+  assert.match(LEGAL_RULES, /危險活動/);
+  assert.match(LEGAL_RULES, /未滿 18 歲/);
+  // 寫段子的界線：荒謬虛構可以，把酒當成「因為」不行
+  assert.match(LEGAL_RULES, /酒是不是那個「因為」/);
+});
+
+test('RISK_TERMS：菸酒管理法那幾條有正確法源與罰則，不再寫「—」', async () => {
+  const { RISK_TERMS } = await import('../src/compliance.mjs');
+  const alcohol = RISK_TERMS.filter((t) => /菸酒管理法/.test(t.law));
+  assert.ok(alcohol.length >= 2, '至少要有過量飲酒與酒駕兩條');
+  for (const t of alcohol) {
+    assert.match(t.law, /§37/, '要標到條號');
+    assert.notEqual(t.fine, '—', '罰則不可以留空白，會讓人低估');
+  }
+});
+
+test('scanCompliance：抓得到不當飲酒訴求，但不誤殺日常用語', async () => {
+  const { scanCompliance } = await import('../src/compliance.mjs');
+  for (const hit of ['今晚不醉不歸', '喝完再開車回家', '來啊一口悶', '無限暢飲']) {
+    assert.ok(scanCompliance(hit).length > 0, `該抓到：${hit}`);
+  }
+  // 這些是風味描述或敬酒用語，抓了會逼使用者改掉正常的話
+  for (const ok of ['這杯順口好喝', '乾杯', '後勁很舒服', '香氣很跳']) {
+    assert.equal(scanCompliance(ok).length, 0, `不該誤殺：${ok}`);
+  }
+});
+
+test('scanCompliance：同一句不會因為規則重疊而重複報同一個詞', async () => {
+  const { scanCompliance } = await import('../src/compliance.mjs');
+  const hits = scanCompliance('今晚不醉不歸');
+  const terms = hits.map((h) => h.term ?? h.matched ?? JSON.stringify(h));
+  assert.equal(new Set(terms).size, terms.length, `重複命中：${JSON.stringify(hits)}`);
+});

@@ -32,8 +32,9 @@ export const DEFAULT_BRAND = {
   localSearchTerms: [],
   // 每批草稿的任務分工，依序循環套用。成長期建議「觸及 → 互動 → 品牌 → 分享」各一，
   // 不要三則都在講自己的店。可選值：reach（蹭熱搜衝觸及）、engage（誘留言）、
-  // brand（品牌記憶點）、share（衝 ✈️ 分享——會把貼文帶出演算法之外，進私訊與限動）。
-  goalMix: ['reach', 'engage', 'brand', 'share'],
+  // brand（品牌記憶點）、share（衝 ✈️ 分享——會把貼文帶出演算法之外，進私訊與限動）、
+  // story（段子——分享率最高，但最難寫；不好笑的笑話比不發還糟）。
+  goalMix: ['reach', 'engage', 'brand', 'share', 'story'],
   // 幽默尺度：mild（溫和）/ spicy（有梗，預設）/ hellish（地獄梗）。
   // 跟法規紅線是兩回事——法規任何尺度都不能碰，這個純粹是品牌個性。
   humor: 'spicy',
