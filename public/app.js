@@ -99,16 +99,21 @@ $('#dryrun').addEventListener('click', async () => {
 });
 
 // ── 原生貼文 ──
+// 卡片上半部（切入點/素材/徽章/紅隊註記/法規提示）。抽出來共用，
+// 因為「重新生成」會換掉這些內容，而重畫整份清單會弄丟其他卡片上未存的手改。
+function draftMetaHtml(d) {
+  return `
+        ${d.angle ? `<span class="angle">${esc(d.angle)}</span> ・ ` : ''}
+        <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>${goalBadge(d.goal)}
+        ${d.reviewNote ? `<div class="review">🛡 已改寫可能被抓語病的說法：${esc(d.reviewNote)}</div>` : ''}
+        ${d.compliance ? `<div class="legal">⚖️ 法規風險，核准前請確認：${esc(d.compliance)}</div>` : ''}`;
+}
+
 async function loadNativeDrafted() {
   const drafts = await api('/api/native/drafts?status=drafted');
   $('#ndrafted').innerHTML = drafts.map((d) => `
     <div class="card" data-id="${d.id}">
-      <div class="meta">
-        ${d.angle ? `<span class="angle">${esc(d.angle)}</span> ・ ` : ''}
-        <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>${goalBadge(d.goal)}
-        ${d.reviewNote ? `<div class="review">🛡 已改寫可能被抓語病的說法：${esc(d.reviewNote)}</div>` : ''}
-        ${d.compliance ? `<div class="legal">⚖️ 法規風險，核准前請確認：${esc(d.compliance)}</div>` : ''}
-      </div>
+      <div class="meta">${draftMetaHtml(d)}</div>
       <textarea maxlength="500">${esc(d.editedText || d.draftText)}</textarea>
       <div class="count"></div>
       <div class="sched">
@@ -119,8 +124,10 @@ async function loadNativeDrafted() {
       <div class="actions">
         <button class="primary approve">核准（可立即發）</button>
         <button class="schedule">排程</button>
+        ${aiAvailable ? '<button class="regen" title="這則不滿意，換一則。分工不變，只換內容">🔄 重新生成</button>' : ''}
         <button class="skip">跳過</button>
       </div>
+      ${aiAvailable ? '<input class="regen-why" placeholder="（選填）哪裡不滿意？例：太像廣告、梗太冷、跟上一則太像" maxlength="200" />' : ''}
     </div>`).join('') || (aiAvailable
       ? '<p>目前沒有待審草稿。按「產生草稿」，或用上方「自己寫一則」新增。</p>'
       : '<p>目前沒有待審草稿。用上方「自己寫一則」新增。</p>');
@@ -288,6 +295,27 @@ $('#ndrafted').addEventListener('click', async (e) => {
       const input = card.querySelector('.topic');
       if (r.topic) { input.value = r.topic; input.title = 'AI 建議的主題，可自行修改'; }
       else alert('AI 想不到合適的主題，維持原樣');
+    } finally { btn.disabled = false; btn.textContent = old; }
+    return;
+  }
+  // 🔄 重新生成：整則換掉。使用者可能已經手改過，所以要先確認再蓋。
+  if (e.target.classList.contains('regen')) {
+    const btn = e.target;
+    const why = (card.querySelector('.regen-why')?.value || '').trim();
+    if (!confirm('換一則新的？現在框裡的內容會被蓋掉。')) return;
+    btn.disabled = true; const old = btn.textContent; btn.textContent = '重新生成中…';
+    try {
+      const r = await api(`/api/native/${id}/regenerate`, {
+        method: 'POST', body: JSON.stringify({ reason: why }),
+      });
+      if (r.error) { alert(r.error); return; }
+      card.querySelector('textarea').value = r.editedText || r.draftText || '';
+      card.querySelector('.meta').innerHTML = draftMetaHtml(r);
+      const topicInput = card.querySelector('.topic');
+      if (topicInput) topicInput.value = r.topic || '';
+      const why2 = card.querySelector('.regen-why');
+      if (why2) why2.value = '';
+      updateCounts();
     } finally { btn.disabled = false; btn.textContent = old; }
     return;
   }

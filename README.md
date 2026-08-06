@@ -74,15 +74,36 @@ npm start          # 開 http://localhost:4321
 
 ```
 即時熱搜(Google Trends TW) + 主題新聞(RSS) + 自己近期貼文(語氣樣本)
-      + 📊 自家成效前幾名(什麼有效) + 品牌知識庫 + 搜尋字
-    → AI 產草稿(觸及／互動／品牌分工) → 🛡 紅隊審稿
-    → dashboard「原生貼文」分頁 → 你編輯/核准 → 【發布】
+      + 📊 自家成效前幾名(什麼有效) + 品牌知識庫 + 搜尋字 + 讀者輪廓
+    → 🎯 主題候選排序 → AI 產草稿(五種分工，每則蹭不同主題) → 🛡 紅隊審稿
+    → dashboard「原生貼文」分頁 → 你編輯/🔄重生/核准 → 【發布】
 ```
 
 ```bash
 npm run generate            # 產草稿
 npm run dashboard           # 審核 → 發布（DRY_RUN=1 為乾跑）
 ```
+
+**一批產幾則**（`draftsPerRun`，預設 15）：對齊 Threads 趨勢頁一次 15 個主題，
+每則蹭一個**不同的**主題（prompt 裡明文禁止兩則撞題）。
+⚠️ 15 則會跑 16 次 AI 呼叫（產稿 1 次 + 紅隊 15 次），一輪數分鐘 —— 適合掛夜間 cron。
+
+**🔄 重新生成**：某一則不滿意，按卡片上的「🔄 重新生成」換一則。
+可以填「哪裡不滿意」（例：太像廣告、梗太冷），那句話在 prompt 裡是最高優先。
+**分工（goal）不變，只換內容** —— 不滿意的是「這則寫得不好」，不是「這個任務指派錯了」。
+只有待審的能重生；已核准的要先刪掉或自己改。
+
+**🎯 主題怎麼挑**：建議的 Threads 主題會依「聲量」排序後才餵給 AI，兩個來源：
+
+| 來源 | 是什麼 | 限制 |
+|---|---|---|
+| Google Trends 熱度 | 現在搜尋量飆高的主題 | **是搜尋量，不是 Threads 貼文則數** |
+| 自家歷史 | 我們用過這個主題，平均帶來多少瀏覽 | 只涵蓋用過的主題，但最準 |
+
+自家驗證過的主題**權重壓過純熱度** —— 「大家在搜」不等於「對我們的受眾有用」。
+
+> Threads API **沒有開放**「這個主題底下有幾則貼文」這個欄位（App 趨勢頁上的「N 則」拿不到），
+> 所以上面兩項都是代理指標。App 上 Live 後，`keyword_search` 才能回真實筆數。
 
 ### 讓草稿像人寫的、而且不會被抓語病
 
@@ -402,8 +423,8 @@ Threads API 在 **Development（開發）模式**下有兩個限制，實測確�
 | `localSearchTerms` | 顧客實際用什麼字找到你（Google 商家檔案「搜尋字詞」抄過來；可留空） |
 | `audienceInterests` | **讀者除了你的產品以外還在意什麼**（音樂、追星、電競、美食…）。留空 AI 會每則都硬轉回產品 |
 | `goalMix` | 每批草稿的分工循環，預設 `["reach","engage","brand","share","story"]` |
+| `draftsPerRun` | 每批產幾則，預設 15（對齊趨勢頁的 15 個主題；每則會跑一次紅隊，數量越多越慢） |
 | `newsFeeds` / `hotTrendsFeeds` | 主題新聞 RSS / 即時熱搜（Google Trends TW） |
-| `draftsPerRun` | 每次 `generate` 產幾則原生草稿 |
 | `replyPersona` | 回覆別人的口吻（貼題、有梗、不推銷、≤120字） |
 | `replyTags` | 回覆用的聚焦搜尋 tag（比 `tags` 精簡，省額度） |
 | `replyThreshold` | 回覆相關性門檻，未過不產草稿 |
@@ -454,7 +475,8 @@ src/
   polish.mjs         ✨ 優化自己寫的貼文（鉤子/緊縮/蹭熱度/建議主題）
   hotthreads.mjs     🔍 關鍵字找熱門串連結（走額度守門）
   knowledge.mjs      品牌知識庫載入（config/knowledge.md）
-  native_ai.mjs      原生貼文 AI 產稿（prompt/解析/分工/紅隊審稿）
+  native_ai.mjs      原生貼文 AI 產稿（prompt/解析/分工/紅隊審稿/🔄 單則重生）
+  topic_rank.mjs     🎯 主題候選排序（熱搜熱度 + 自家成效，皆為代理指標）
   native_generate.mjs 原生貼文生產線
   reply_pipeline.mjs 主動留言生產線（搜候選→評分→產草稿）
   inbox.mjs         💬 留言區（自家貼文底下未回的留言→產草稿）
