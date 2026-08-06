@@ -611,3 +611,123 @@ test('重新生成：找不到的 id 回 404', async () => {
   assert.equal(res.status, 404);
   store.close();
 });
+
+// ── 🚀 核准並發布（一鍵）──
+function apPublishApp({ publish } = {}) {
+  const store = createStore(':memory:');
+  const sent = [];
+  const app = createServer({
+    store,
+    setupComplete: true,
+    accounts: [{ name: 'a' }],
+    publishDraft: makePublishDraft({
+      store,
+      publish: publish || (async ({ text }) => { sent.push(text); return { id: 'p1' }; }),
+    }),
+  });
+  return { store, app, sent };
+}
+
+test('核准並發布：一次到位，狀態變 published', async () => {
+  const { app, store, sent } = apPublishApp();
+  const id = store.insertNativeDraft({ draftText: '要發的內容' });
+  const res = await request(app).post(`/api/native/${id}/approve-publish`).send({});
+  assert.equal(res.status, 200);
+  assert.deepEqual(sent, ['要發的內容']);
+  const row = store.getNativeDraft(id);
+  assert.equal(row.status, 'published');
+  assert.equal(row.publishedPostId, 'p1');
+  store.close();
+});
+
+test('核准並發布：帶主題，且以框裡的手改內容為準', async () => {
+  const { app, store, sent } = apPublishApp();
+  const id = store.insertNativeDraft({ draftText: '原稿' });
+  store.editNativeDraft(id, '我改過的版本');
+  await request(app).post(`/api/native/${id}/approve-publish`).send({ topic: '調酒' });
+  assert.deepEqual(sent, ['我改過的版本']);
+  assert.equal(store.getNativeDraft(id).topic, '調酒');
+  store.close();
+});
+
+test('核准並發布：只吃待審核，已核准/已發布要擋', async () => {
+  const { app, store, sent } = apPublishApp();
+  for (const status of ['approved', 'published', 'publishing', 'skipped']) {
+    const id = store.insertNativeDraft({ draftText: '內容' });
+    store.setNativeStatus(id, status);
+    const res = await request(app).post(`/api/native/${id}/approve-publish`).send({});
+    assert.equal(res.status, 400, `${status} 應該被擋`);
+    assert.match(res.body.error, /只有「待審核」/);
+  }
+  assert.deepEqual(sent, [], '一則都不該送出去');
+  store.close();
+});
+
+test('核准並發布：發布失敗要標成 failed，不能卡在 approved 假裝還沒發', async () => {
+  const { app, store } = apPublishApp({ publish: async () => { throw new Error('API 掛了'); } });
+  const id = store.insertNativeDraft({ draftText: '內容' });
+  const res = await request(app).post(`/api/native/${id}/approve-publish`).send({});
+  assert.equal(res.status, 500);
+  assert.equal(store.getNativeDraft(id).status, 'failed');
+  store.close();
+});
+
+test('核准並發布：找不到的 id 回 404', async () => {
+  const { app, store } = apPublishApp();
+  assert.equal((await request(app).post('/api/native/99999/approve-publish').send({})).status, 404);
+  store.close();
+});
+
+// ── ⏰ 全部排程 ──
+test('全部排程：核准 + 照各自的時間排，並存下手改的內容', async () => {
+  const store = createStore(':memory:');
+  const app = createServer({ store, setupComplete: true, accounts: [{ name: 'a' }] });
+  const a = store.insertNativeDraft({ draftText: '甲' });
+  const b = store.insertNativeDraft({ draftText: '乙' });
+  const res = await request(app).post('/api/native/schedule-all').send({
+    items: [
+      { id: a, text: '甲（改過）', topic: '調酒', scheduledAt: '2026-08-10T21:00:00.000Z' },
+      { id: b, text: '乙', scheduledAt: '2026-08-10T22:00:00.000Z' },
+    ],
+  });
+  assert.equal(res.body.scheduled, 2);
+  const ra = store.getNativeDraft(a);
+  assert.equal(ra.status, 'approved');
+  assert.equal(ra.editedText, '甲（改過）');
+  assert.equal(ra.topic, '調酒');
+  assert.equal(ra.scheduledAt, '2026-08-10T21:00:00.000Z');
+  store.close();
+});
+
+test('全部排程：壞掉的那幾則要跳過並回報，不能拖垮整批', async () => {
+  const store = createStore(':memory:');
+  const app = createServer({ store, setupComplete: true, accounts: [{ name: 'a' }] });
+  const ok = store.insertNativeDraft({ draftText: '好的' });
+  const done = store.insertNativeDraft({ draftText: '已發過' });
+  store.setNativeStatus(done, 'published');
+  const res = await request(app).post('/api/native/schedule-all').send({
+    items: [
+      { id: ok, text: '好的', scheduledAt: '2026-08-10T21:00:00.000Z' },
+      { id: done, text: 'x', scheduledAt: '2026-08-10T22:00:00.000Z' },
+      { id: 99999, text: 'x', scheduledAt: '2026-08-10T23:00:00.000Z' },
+      { id: ok, text: 'y', scheduledAt: '亂打的' },
+    ],
+  });
+  assert.equal(res.body.scheduled, 1);
+  assert.equal(res.body.skipped.length, 3);
+  assert.match(res.body.skipped.map((s) => s.why).join('|'), /published|找不到|沒有排程時間/);
+  store.close();
+});
+
+test('全部排程：超過 500 字的那則要跳過，不能把超長內容排進去', async () => {
+  const store = createStore(':memory:');
+  const app = createServer({ store, setupComplete: true, accounts: [{ name: 'a' }] });
+  const id = store.insertNativeDraft({ draftText: '短的' });
+  const res = await request(app).post('/api/native/schedule-all').send({
+    items: [{ id, text: '長'.repeat(501), scheduledAt: '2026-08-10T21:00:00.000Z' }],
+  });
+  assert.equal(res.body.scheduled, 0);
+  assert.match(res.body.skipped[0].why, /500/);
+  assert.equal(store.getNativeDraft(id).status, 'drafted', '沒排成功就不該改狀態');
+  store.close();
+});

@@ -58,6 +58,7 @@
     .hot-item .who { font-size: 12.5px; color: #666; margin-bottom: 4px; }
     .hot-item .who a { color: #0a66c2; }
     h3 { margin: 24px 0 4px; }
+    h3 button { font-size: 13px; padding: 4px 10px; font-weight: normal; margin-left: 10px; vertical-align: middle; }
   </style>
 </head>
 <body>
@@ -95,7 +96,9 @@
       </div>
       <div id="polishResult" style="display:none"></div>
     </div>
-    <h3>待審核</h3>
+    <h3>待審核
+      <button id="scheduleAll" title="把下面每則都核准，並照各自預填的建議時間排程">⏰ 全部排程</button>
+    </h3>
     <div id="ndrafted"></div>
     <h3>已核准（待發布）</h3>
     <div id="napproved"></div>

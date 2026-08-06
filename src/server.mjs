@@ -417,6 +417,58 @@ export function createServer({
       store.setNativeStatus(Number(req.params.id), 'skipped');
       res.json({ ok: true });
     });
+    // 核准 + 立即發布，一次到位。
+    //
+    // 合規上跟「先核准、再到另一個分頁按發布」是同一件事——都是人對著這一則、
+    // 看過內容之後親手按的。省掉的是換分頁，不是人工審核那一步。
+    // 只吃 drafted：已核准的請走已核准分頁，免得同一則被兩條路徑同時送出。
+    app.post('/api/native/:id/approve-publish', wrap(async (req) => {
+      const id = Number(req.params.id);
+      const d = store.getNativeDraft(id);
+      if (!d) { const e = new Error('找不到草稿'); e.status = 404; throw e; }
+      if (d.status !== 'drafted') {
+        const e = new Error(`只有「待審核」的草稿能用這個按鈕（目前狀態：${d.status}）`);
+        e.status = 400; throw e;
+      }
+      const topic = req.body && req.body.topic ? validateTopic(req.body.topic) : null;
+      if (topic) store.setNativeTopic(id, topic);
+      store.setNativeStatus(id, 'approved');
+      // 發布失敗時 makePublishDraft 會把狀態標成 failed，不會卡在 approved 假裝還沒發
+      return publishDraft(id);
+    }));
+    // ⏰ 一鍵把待審核全部核准 + 照各自的建議時間排程。
+    //
+    // 為什麼是「排程」而不是「全部立刻發」：15 則同時送出，正是 minGapMinutes
+    // 要防的爆量刷版。批次要省的是點擊次數，不是把「時間分散」這件事拿掉。
+    // 帶著各卡片當下的文字一起送，否則使用者剛手改的內容會被丟掉。
+    app.post('/api/native/schedule-all', (req, res) => {
+      const items = Array.isArray(req.body?.items) ? req.body.items : [];
+      let scheduled = 0;
+      const skipped = [];
+      for (const it of items) {
+        const id = Number(it?.id);
+        const row = store.getNativeDraft(id);
+        if (!row) { skipped.push({ id, why: '找不到' }); continue; }
+        if (row.status !== 'drafted') { skipped.push({ id, why: `狀態是 ${row.status}` }); continue; }
+        if (!it.scheduledAt || Number.isNaN(Date.parse(it.scheduledAt))) {
+          skipped.push({ id, why: '沒有排程時間' }); continue;
+        }
+        try {
+          const text = String(it.text ?? '');
+          if (text.trim()) {
+            validateText(text);
+            store.editNativeDraft(id, text);
+          }
+          store.setNativeSchedule(
+            id, new Date(it.scheduledAt).toISOString(), it.topic ? validateTopic(it.topic) : null
+          );
+          scheduled += 1;
+        } catch (e) {
+          skipped.push({ id, why: String(e.message || e) });
+        }
+      }
+      res.json({ ok: true, scheduled, skipped });
+    });
     app.post('/api/native/:id/publish', wrap((req) => publishDraft(Number(req.params.id))));
     // 🗑 刪掉不想發的草稿（含已核准待發布的）。已發布的擋著——那是紀錄，不是待辦。
     app.delete('/api/native/:id', (req, res) => {
