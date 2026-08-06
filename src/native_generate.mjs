@@ -97,6 +97,7 @@ export async function runGeneration({
   const drafts = await generateDrafts({
     persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts,
     topPosts, searchTerms, goalMix: brand.goalMix, humor: brand.humor,
+    audienceInterests: brand.audienceInterests || [],
     // 從「已產過幾則」接著輪：draftsPerRun 小於 goalMix 長度時（例如 3 則 vs 4 種目標），
     // 沒有這個 offset 的話，排在後面的目標會永遠輪不到。
     goalOffset: store.countNativeDrafts?.() ?? 0,
