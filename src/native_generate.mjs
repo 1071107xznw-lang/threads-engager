@@ -3,6 +3,7 @@ import { createApi } from './threads_api.mjs';
 import { gatherTagPosts } from './threads_search.mjs';
 import { fetchNewsTitles, fetchTrendingTopics } from './trends.mjs';
 import { generateDrafts } from './native_ai.mjs';
+import { rankTopics } from './topic_rank.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 import { rankOwnPosts, summarizeMetrics } from './insights.mjs';
 
@@ -68,6 +69,7 @@ export async function runGeneration({
   // 4b) 成效回饋：哪幾則「真的有流量」——拿冠軍當範本，而不是拿最新的當範本。
   //     需 threads_manage_insights 權限；沒有就 fail-open（少一個訊號，不擋產稿）。
   let topPosts = [];
+  let rankedAll = [];
   let insightsAvailable = false;
   if (!useInsights) {
     log('成效回饋：已關閉（brand.useInsights = false）');
@@ -75,11 +77,29 @@ export async function runGeneration({
     const ranked = await rankOwnPosts({ api, accessToken, posts: ownRaw, limit: 5, maxFetch: 15, log });
     insightsAvailable = ranked.available;
     topPosts = ranked.top;
+    rankedAll = ranked.all || [];
     if (insightsAvailable) {
       const best = topPosts[0];
       log(`成效回饋：讀到 ${ranked.scored} 則數據${best ? `；表現最好的一則 ${summarizeMetrics(best.metrics)}` : ''}`);
     }
   }
+
+  // 4b-2) 主題排序：建議 topic 時優先挑聲量大的。
+  //       兩個代理指標——熱搜的搜尋熱度，加上「我們自己用過這個主題，帶來多少瀏覽」。
+  //       後者要靠 publishedPostId 把 DB 的 topic 跟 insights 對起來
+  //       （listOwnPosts 預設欄位不含 topic_tag，從 API 拿不到）。
+  const ownTopicHistory = [];
+  if (insightsAvailable && store.listPublishedNativeTopics) {
+    const topicByPostId = new Map(
+      store.listPublishedNativeTopics().map((r) => [r.publishedPostId, r.topic])
+    );
+    for (const s of rankedAll) {
+      const topic = topicByPostId.get(s.id);
+      if (topic) ownTopicHistory.push({ topic, metrics: s.metrics });
+    }
+  }
+  const topicPool = rankTopics({ hotTrends, ownHistory: ownTopicHistory });
+  log(`主題候選：${topicPool.length} 個${ownTopicHistory.length ? `（其中 ${ownTopicHistory.length} 則有自家成效可參考）` : '（尚無自家成效，純看搜尋熱度）'}`);
 
   // 4c) 搜尋字訊號：顧客實際用什麼字找我們（localSearchTerms）＋ 我們想被搜到的字（tags）
   const searchTerms = [...new Set(
@@ -98,6 +118,7 @@ export async function runGeneration({
     persona: brand.persona, hotTrends, newsTitles, tagPosts, ownPosts,
     topPosts, searchTerms, goalMix: brand.goalMix, humor: brand.humor,
     audienceInterests: brand.audienceInterests || [],
+    topicPool,
     // 從「已產過幾則」接著輪：draftsPerRun 小於 goalMix 長度時（例如 3 則 vs 4 種目標），
     // 沒有這個 offset 的話，排在後面的目標會永遠輪不到。
     goalOffset: store.countNativeDrafts?.() ?? 0,
@@ -127,6 +148,7 @@ export async function runGeneration({
     newsTitles: newsTitles.length,
     ownPosts: ownPosts.length,
     knowledgeChars: kb.length,
+    topicPool: topicPool.length, // 主題候選數（依聲量排序後餵給 AI 挑）
     reviewed, // 被紅隊改寫過的則數
     insightsAvailable, // 有沒有讀到自家成效（false = token 缺 threads_manage_insights）
     topPosts: topPosts.length,

@@ -528,3 +528,86 @@ test('resolveHost：網路介面列舉回空值也不能爆', async () => {
   assert.equal(resolveHost('tailscale', { interfaces: () => null, warn: () => {} }), '127.0.0.1');
   assert.equal(resolveHost('tailscale', { interfaces: () => ({ en0: null }), warn: () => {} }), '127.0.0.1');
 });
+
+// ── 🔄 原生貼文：單則重新生成 ──
+function regenApp({ regenerateOne } = {}) {
+  const store = createStore(':memory:');
+  const app = createServer({
+    store,
+    setupComplete: true,
+    accounts: [{ name: 'a' }],
+    regenerateOne: regenerateOne || (async () => ({
+      text: '重生後的內容', angle: '新切入點', topic: '新主題', reviewNote: '',
+    })),
+  });
+  return { store, app };
+}
+
+test('重新生成：換掉內容，並回傳新的那一則', async () => {
+  const { app, store } = regenApp();
+  const id = store.insertNativeDraft({ draftText: '原本的爛稿', angle: '舊切入點', goal: 'story' });
+  const res = await request(app).post(`/api/native/${id}/regenerate`).send({ reason: '太像廣告' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.draftText, '重生後的內容');
+  assert.equal(store.getNativeDraft(id).draftText, '重生後的內容');
+  store.close();
+});
+
+test('重新生成：分工（goal）不能被換掉', async () => {
+  const { app, store } = regenApp();
+  const id = store.insertNativeDraft({ draftText: '舊的', goal: 'story' });
+  await request(app).post(`/api/native/${id}/regenerate`).send({});
+  assert.equal(store.getNativeDraft(id).goal, 'story');
+  store.close();
+});
+
+test('重新生成：原本的 goal 與被打回的內容要傳給產稿端', async () => {
+  const seen = [];
+  const { app, store } = regenApp({
+    regenerateOne: async (args) => { seen.push(args); return { text: '新的' }; },
+  });
+  const id = store.insertNativeDraft({ draftText: '舊的', goal: 'share' });
+  store.editNativeDraft(id, '我手改過的版本');
+  await request(app).post(`/api/native/${id}/regenerate`).send({ reason: '梗太冷' });
+  // 要拿「使用者眼前看到的那一版」去避開，不是原始 draftText
+  assert.deepEqual(seen, [{ previousText: '我手改過的版本', goal: 'share', reason: '梗太冷' }]);
+  store.close();
+});
+
+test('🔴 重新生成：手改過的 editedText 一定要被清掉', async () => {
+  // 渲染與發布走的都是 editedText || draftText。留著的話新稿會被舊的手改內容蓋住，
+  // 使用者看到的是「按了沒反應」。
+  const { app, store } = regenApp();
+  const id = store.insertNativeDraft({ draftText: '舊的' });
+  store.editNativeDraft(id, '我手改過的版本');
+  await request(app).post(`/api/native/${id}/regenerate`).send({});
+  const row = store.getNativeDraft(id);
+  assert.equal(row.editedText, null);
+  assert.equal(row.editedText || row.draftText, '重生後的內容');
+  store.close();
+});
+
+test('重新生成：只有待審的能重生，已核准/已發布要擋', async () => {
+  const { app, store } = regenApp();
+  for (const [status, pattern] of [
+    ['approved', /已經核准/],
+    ['publishing', /正在發布中/],
+    ['published', /不能重新生成/],
+    ['skipped', /已經略過/],
+  ]) {
+    const id = store.insertNativeDraft({ draftText: '內容' });
+    store.setNativeStatus(id, status);
+    const res = await request(app).post(`/api/native/${id}/regenerate`).send({});
+    assert.equal(res.status, 400, `${status} 應該被擋`);
+    assert.match(res.body.error, pattern);
+    assert.equal(store.getNativeDraft(id).draftText, '內容', `${status} 的內容不該被動到`);
+  }
+  store.close();
+});
+
+test('重新生成：找不到的 id 回 404', async () => {
+  const { app, store } = regenApp();
+  const res = await request(app).post('/api/native/99999/regenerate').send({});
+  assert.equal(res.status, 404);
+  store.close();
+});

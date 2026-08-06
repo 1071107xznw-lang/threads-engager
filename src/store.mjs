@@ -217,6 +217,25 @@ export function createStore(dbPath) {
     setNativeStatus(id, status) {
       db.prepare('UPDATE native_drafts SET status=? WHERE id=?').run(status, id);
     },
+    // 重新生成：整則換掉內容。只給待審的用（上層負責擋狀態）。
+    //
+    // ⚠️ 一定要把 editedText 清成 NULL。渲染與發布走的都是 `editedText || draftText`，
+    // 留著的話使用者手改過的舊內容會蓋住新產的稿——看起來像「重新生成沒反應」。
+    replaceNativeDraftText(id, { draftText, angle = null, topic = null, reviewNote = null }) {
+      db.prepare(`
+        UPDATE native_drafts
+        SET draftText=?, editedText=NULL, angle=?, topic=?, reviewNote=?, error=NULL
+        WHERE id=?
+      `).run(draftText, angle, topic || null, reviewNote || null, id);
+    },
+    // 已發布的原生貼文用過哪些主題。用途：主題排序時加權「對我們的受眾真的有用」的主題。
+    // 走 publishedPostId 跟 insights 對得起來（listOwnPosts 預設欄位不含 topic_tag，拿不到）。
+    listPublishedNativeTopics() {
+      return db.prepare(`
+        SELECT publishedPostId, topic FROM native_drafts
+        WHERE status='published' AND publishedPostId IS NOT NULL AND topic IS NOT NULL AND topic<>''
+      `).all();
+    },
     // 刪掉一則草稿（待審／已核准／已略過都可以）。
     // 已發布的擋著不給刪：那是「發生過什麼」的紀錄，刪掉就查不到當初發了什麼。
     // publishing 也擋——正在送出的中途刪掉會留下無主的 container。

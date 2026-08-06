@@ -39,8 +39,10 @@ export const POST_GOALS = {
       + '(2) 對號入座——「每群朋友都有一個…」列 3～5 種，讀的人會想到具體的臉；'
       + '(3) 懶人包——可收藏的清單，解決一個很具體的難題；'
       + '(4) 邀請函——把貼文寫成可以直接轉給朋友當邀約用的樣子。'
-      + '結尾可以明講收件人（例：「傳給那個每次都說自己沒醉的朋友」）——'
-      + '大部分人不分享只是因為沒想到要傳給誰。這不是推銷 CTA，不要寫成「歡迎來店」。',
+      + '⚠️ **不准明著叫人分享／轉發／按讚／追蹤**（例：「傳給那個每次都說自己沒醉的朋友」）。'
+      + 'Meta 已確認這種明示 CTA 會被判定為 engagement bait 而降權，反效果。'
+      + '正確做法是**寫得夠具體，讓讀者自己想到一張臉**——'
+      + '大部分人不分享只是因為沒想到要傳給誰，而不是因為沒被叫。',
   },
   // 段子：分享率最高的形式，但也最難寫——不好笑的笑話比不發還糟。
   //
@@ -92,7 +94,9 @@ export function buildNativePrompt({
   topPosts = [],      // 自己成效最好的貼文（含 metrics）——學「什麼有效」
   searchTerms = [],   // 大家用什麼字找我們／我們想被搜到的字
   audienceInterests = [], // 讀者除了我們賣的東西以外還在意什麼
+  topicPool = [],     // 排序過的 Threads 主題候選（topic_rank.rankTopics 產生）
   goals = [],         // 每則的任務分工（assignGoals 產生）
+  avoid = null,       // 重新生成用：{ text, reason } —— 上一版被打回票了
   knowledge = '', n = 3,
 }) {
   const lines = [];
@@ -124,12 +128,19 @@ export function buildNativePrompt({
   }
   if (hotTrends.length) {
     lines.push('【全網即時熱搜（現在搜尋量飆高的時勢主題，蹭得上就蹭）】');
-    hotTrends.slice(0, 12).forEach((t, i) => {
+    // 清單長度要跟著批次量走：一批 15 則卻只給 12 個主題，後面幾則保證撞題。
+    hotTrends.slice(0, Math.max(12, n)).forEach((t, i) => {
       const traffic = t.traffic ? `（流量 ${t.traffic}）` : '';
       const ctx = t.context ? `：${String(t.context).slice(0, 60)}` : '';
       lines.push(`${i + 1}. ${t.topic}${traffic}${ctx}`);
     });
     lines.push('');
+    if (n > 1) {
+      lines.push(`※ 這批要產 ${n} 則，**每則蹭一個不同的主題，不准兩則蹭同一個**。`);
+      lines.push('  在 angle 欄位註明這則蹭的是哪一個（例：「蹭『◯◯◯』」）。');
+      lines.push('  上面的清單不夠用時，用近期新聞或讀者輪廓裡的題材補——一樣不准重複。');
+      lines.push('');
+    }
   }
   if (newsTitles.length) {
     lines.push('【近期新聞／話題】');
@@ -191,6 +202,23 @@ export function buildNativePrompt({
     lines.push('');
   }
 
+  // 重新生成：使用者對某一則按了「換一則」。這段要放在分工之後——
+  // 分工不變（不滿意的是「這則寫得不好」，不是「這個任務指派錯了」），變的是內容。
+  if (avoid && String(avoid.text || '').trim()) {
+    lines.push('## 🔄 這是「重新生成」——上一版被打回票了');
+    lines.push('上一版（**不要再寫成這樣**）：');
+    lines.push(String(avoid.text).trim().slice(0, 500));
+    lines.push('');
+    if (String(avoid.reason || '').trim()) {
+      lines.push(`使用者說哪裡不滿意：${String(avoid.reason).trim().slice(0, 200)}`);
+      lines.push('※ 這句是**最優先**的指示，比上面任何偏好都重要。');
+      lines.push('');
+    }
+    lines.push('※ 不是把上一版改寫或潤飾，是**重寫一則全新的**：換題材、換角度、換開頭第一句。');
+    lines.push('  只有任務分工不變。');
+    lines.push('');
+  }
+
   // 法規要在**產稿時**就進去，不能只靠後面的紅隊審稿。
   // 踩到紅線的貼文（尤其段子）是整則要重寫，不是事後改幾個字救得回來的。
   lines.push(LEGAL_RULES);
@@ -211,7 +239,13 @@ export function buildNativePrompt({
   lines.push('  **不要硬給答案，把問題丟出去讓懂的人在留言區教大家。**');
   lines.push('  講自己的做法或感受 →「你們都怎麼弄？」「有沒有內行的來解釋一下？」');
   lines.push('  這樣既不會被抓語病，又會催出高品質留言——留言是最值錢的互動。');
-  lines.push('- 不放連結（會壓觸及）；hashtag 0～1 個。');
+  // 「連結會壓觸及」曾經是對的，但 Meta 2025 反向調整了排序，帶連結的貼文反而表現較好。
+  // 留著舊規則等於叫 AI 主動避開一個現在有加分的東西。
+  lines.push('- 連結不再被降權（Meta 2025 已調整），有需要就放，但不要為了放而放。');
+  lines.push('- hashtag 0～1 個。');
+  lines.push('- ⚠️ **不准明著要互動**：「按讚」「留言告訴我」「分享給朋友」「追蹤我」這類句子');
+  lines.push('  會被判定為 engagement bait 而降權。要留言就丟一個真的想知道答案的問題，');
+  lines.push('  要分享就把內容寫到值得分享——不要用叫的。');
   lines.push('');
   lines.push('## 絕對不要');
   lines.push('- **AI 腔**：罐頭金句、「在這個◯◯的時代」、「不僅…更是…」、排比堆疊、');
@@ -230,6 +264,14 @@ export function buildNativePrompt({
   lines.push('  **硬轉回產品比不蹭還糟**，那一句轉折就是別人看出這是廣告的地方。');
   lines.push('- 為每則建議「一個」最貼切的 Threads 主題(topic)：1 個簡短詞或詞組、≤20 字、');
   lines.push('  貼近該則內容、用貼文的語言、**不含句點/&/# 等符號**；想不到合適的就給空字串。');
+  if (topicPool.length) {
+    lines.push('  **主題優先從下面這份清單挑**（已依聲量由高到低排序，挑得到就不要自己另外發明）：');
+    topicPool.slice(0, 25).forEach((t, i) => {
+      const why = [t.traffic ? `熱度 ${t.traffic}` : null, t.ownNote || null].filter(Boolean).join('、');
+      lines.push(`  ${i + 1}. ${t.topic}${why ? `（${why}）` : ''}`);
+    });
+    lines.push('  清單裡沒有貼切的，才自己想一個——**主題不貼內容比沒有主題還糟**。');
+  }
   lines.push('');
   lines.push(
     `只輸出一個 JSON 陣列，長度 ${n}，格式：`
@@ -365,6 +407,7 @@ export async function generateDrafts({
   topPosts = [],    // 自己成效最好的貼文（學「什麼有效」）
   searchTerms = [], // 在地／品牌搜尋字
   audienceInterests = [], // 讀者輪廓（讓題材不必每則都繞回產品）
+  topicPool = [],   // 排序過的主題候選（優先挑聲量大的）
   goalMix,          // 這批的分工配比，如 ['reach','engage','brand','share']
   goalOffset = 0,   // 從配比第幾個開始輪（每批數量 < 配比長度時，靠它跨批次輪完一圈）
   humor,            // 幽默尺度
@@ -377,17 +420,47 @@ export async function generateDrafts({
   const goals = assignGoals(n, goalMix, goalOffset);
   const prompt = buildNativePrompt({
     persona, hotTrends, newsTitles, tagPosts, ownPosts,
-    topPosts, searchTerms, audienceInterests, goals, knowledge, humor, n,
+    topPosts, searchTerms, audienceInterests, topicPool, goals, knowledge, humor, n,
   });
   const raw = await runner(prompt);
   const drafts = parseDrafts(raw, { goals }); // 每則含 { text, angle, topic, goal }
   if (!redTeam) return drafts.map((d) => ({ ...d, reviewNote: '' }));
 
   const reviewed = [];
-  for (const d of drafts) {
+  for (const [i, d] of drafts.entries()) {
+    // 一批 15 則時紅隊要跑 15 次、數分鐘起跳。沒有逐則回報的話畫面會像當掉。
+    log(`🛡 紅隊審稿 ${i + 1}/${drafts.length}…`);
     const r = await redTeamDraft({ text: d.text, knowledge, humor, runner });
-    if (r.changed) log(`🛡 已改寫可能被戰的說法：${r.note || '(未說明)'}`);
+    if (r.changed) log(`   已改寫可能被戰的說法：${r.note || '(未說明)'}`);
     reviewed.push({ ...d, text: r.text, reviewNote: r.changed ? r.note : '' });
   }
   return reviewed;
+}
+
+// 單則重新生成：使用者對某一則不滿意，換一則新的。
+//
+// 沿用同一個 goal——不滿意的是「這則寫得不好」，不是「這個任務分工指派錯了」。
+// 換 goal 的話，goalMix 跨批次輪替的保證就破了。
+export async function regenerateDraft({
+  persona,
+  goal = null,        // 原本的分工，原封不動沿用
+  previousText,       // 被打回票的那一版
+  reason = '',        // 使用者填的「哪裡不滿意」（選填）
+  hotTrends, newsTitles, tagPosts, ownPosts,
+  topPosts = [], searchTerms = [], audienceInterests = [], topicPool = [],
+  humor, knowledge = '', runner = defaultRunner, redTeam = true, log = () => {},
+}) {
+  const goals = goal ? [goal] : [];
+  const prompt = buildNativePrompt({
+    persona, hotTrends, newsTitles, tagPosts, ownPosts,
+    topPosts, searchTerms, audienceInterests, topicPool, goals,
+    avoid: { text: previousText, reason },
+    knowledge, humor, n: 1,
+  });
+  const raw = await runner(prompt);
+  const [draft] = parseDrafts(raw, { goals });
+  if (!redTeam) return { ...draft, reviewNote: '' };
+  const r = await redTeamDraft({ text: draft.text, knowledge, humor, runner });
+  if (r.changed) log(`🛡 已改寫可能被戰的說法：${r.note || '(未說明)'}`);
+  return { ...draft, text: r.text, reviewNote: r.changed ? r.note : '' };
 }
