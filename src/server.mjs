@@ -9,7 +9,9 @@ import { loadEnvFile, resolveSettings } from './env.mjs';
 import { loadBrand, resolveBrandPath } from './brand.mjs';
 import { createApi } from './threads_api.mjs';
 import { getActiveToken } from './threads_token.mjs';
-import { publishText, validateTopic, validateText } from './threads_publish.mjs';
+import {
+  publishText, validateTopic, validateText, checkPublishingQuota,
+} from './threads_publish.mjs';
 import { runGeneration } from './native_generate.mjs';
 import { suggestTopic as nativeSuggestTopic, regenerateDraft } from './native_ai.mjs';
 import { rankTopics } from './topic_rank.mjs';
@@ -189,6 +191,7 @@ export function createServer({
   regenerateReply, // 🔄 重新生成某則回覆草稿（換個角度）
   runSend,
   runGenerate,
+  publishQuota, // 官方發布額度用量：() => Promise<{used, total, remaining}|null>
   regenerateOne, // 🔄 單則重新生成：({ previousText, goal, reason }) => Promise<{text, angle, topic, reviewNote}>
   suggestTopic, // 建議主題（AI）：({ text }) => Promise<string|null>
   polishPost, // ✨ 優化自己寫的貼文：({ text }) => Promise<{original, text, hook, ...}>
@@ -317,6 +320,12 @@ export function createServer({
     // 沒有就回 available:false + 原因，前端顯示提示而非報錯。
     if (topInsights) {
       app.get('/api/insights/top', wrap(() => topInsights()));
+    }
+
+    // 官方發布額度用量（滾動 24 小時 250 則）。查不到回 {}，前端安靜跳過——
+    // 這是給人看的資訊，不是功能的前提。
+    if (publishQuota) {
+      app.get('/api/publish-quota', wrap(async () => (await publishQuota()) || {}));
     }
 
     // 原生貼文 產稿→審核→發布
@@ -534,6 +543,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     runGenerate: () => {
       const { settings, api, accessToken } = currentAuth();
       return runGeneration({ settings, brand: currentBrand(), store, accessToken, api, configDir });
+    },
+    publishQuota: async () => {
+      const { settings, api, accessToken } = currentAuth();
+      return checkPublishingQuota({ settings, accessToken, api, log: () => {} });
     },
     // 🔄 單則重新生成。訊號取跟 polishPost 同一套的輕量版——不重跑整條生產線
     //（不搜站內、不讀 insights），因為使用者按下去是希望「馬上換一則」。

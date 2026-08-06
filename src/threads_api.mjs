@@ -86,6 +86,13 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'GET', `${graph}/${userId}/replies?${q}`);
     },
 
+    // 官方發布額度用量：滾動 24 小時內已用掉幾則（官方硬上限 250）。
+    // 需 threads_basic + threads_content_publish——發文本來就要這兩個，不會多要權限。
+    async getPublishingLimit({ accessToken, userId, fields = 'quota_usage,config' }) {
+      const q = buildQuery(authed(accessToken, { fields }));
+      return request(fetchImpl, 'GET', `${graph}/${userId}/threads_publishing_limit?${q}`);
+    },
+
     // 單則自己貼文的成效（瀏覽/按讚/留言/轉發…）。需 threads_manage_insights 權限；
     // token 沒這個權限時會回 API 錯誤，由上層 fail-open 處理（不擋產稿）。
     async getMediaInsights({

@@ -40,6 +40,33 @@ export function sanitizeTopic(raw) {
   return t || null;
 }
 
+// 官方發布額度：滾動 24 小時內 250 則。
+export const PUBLISH_QUOTA_TOTAL = 250;
+
+// 解析 threads_publishing_limit 的回應 → { used, total, remaining }。
+// 欄位缺漏或格式不如預期時回 null（代表「查不到」），由呼叫端決定要不要放行。
+export function parsePublishingLimit(json) {
+  const row = Array.isArray(json?.data) ? json.data[0] : null;
+  if (!row) return null;
+  const used = Number(row.quota_usage);
+  if (!Number.isFinite(used)) return null;
+  const total = Number(row.config?.quota_total);
+  const cap = Number.isFinite(total) && total > 0 ? total : PUBLISH_QUOTA_TOTAL;
+  return { used, total: cap, remaining: Math.max(0, cap - used) };
+}
+
+// 查目前的發布額度用量。查不到就回 null——**額度查詢失敗不擋發布**：
+// 這是個保護機制，不是必要條件，掛掉不該讓使用者連貼文都發不出去。
+export async function checkPublishingQuota({ settings, accessToken, api, log = () => {} }) {
+  try {
+    const json = await api.getPublishingLimit({ accessToken, userId: settings.userId });
+    return parsePublishingLimit(json);
+  } catch (e) {
+    log(`⚠️ 查不到發布額度用量（略過檢查）：${e.message || e}`);
+    return null;
+  }
+}
+
 // 發布 Argo 自己的一則原生 TEXT 貼文：建立容器 →（等待處理）→ 發布。
 // DRY_RUN 開啟時不打任何寫入 API，只記 log 並回傳可預期結果。
 export async function publishText({
@@ -51,6 +78,7 @@ export async function publishText({
   dryRun = settings.dryRun,
   waitMs = 30000, // 官方建議發布前約等 30 秒讓伺服器處理
   sleepImpl = defaultSleep,
+  checkQuota = true, // 發之前先問官方還剩多少額度
   log = console.log,
 }) {
   validateText(text);
@@ -60,6 +88,19 @@ export async function publishText({
   if (dryRun) {
     log(`[DRY_RUN] 不實際發文${topicTag ? `（主題：${topicTag}）` : ''}。預定發布內容：${text}`);
     return { dryRun: true, id: null, text, topic: topicTag };
+  }
+
+  // 額度用完就先擋下來，不要建了容器才失敗——那會留下一個無主的 container。
+  if (checkQuota && api.getPublishingLimit) {
+    const quota = await checkPublishingQuota({ settings, accessToken, api, log });
+    if (quota && quota.remaining <= 0) {
+      throw new Error(
+        `官方發布額度已用完（24 小時內 ${quota.used}/${quota.total} 則），請稍後再發`
+      );
+    }
+    if (quota && quota.remaining <= 10) {
+      log(`⚠️ 發布額度快用完了：24 小時內已用 ${quota.used}/${quota.total}，剩 ${quota.remaining} 則`);
+    }
   }
 
   const container = await api.createTextContainer({ accessToken, userId, text, topicTag });

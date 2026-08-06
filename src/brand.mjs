@@ -45,6 +45,17 @@ export const DEFAULT_BRAND = {
   // 跟法規紅線是兩回事——法規任何尺度都不能碰，這個純粹是品牌個性。
   humor: 'spicy',
   draftsPerRun: 3,
+  // ── 自動排程（只填建議時間，不代替人核准；見 CLAUDE.md 規則 2）──
+  autoSchedule: true,
+  // 每個「本地日」最多排幾則。官方 API 硬上限是 250 則/24h，這個數字遠低於它——
+  // 它管的不是 API 額度，是「同一天發太多會自己稀釋自己的推薦池」。
+  dailyPublishCap: 15,
+  // 兩則之間至少隔多久（分鐘）。這才是防止被當刷版的實際防線，不是則數。
+  minGapMinutes: 55,
+  // 一天的活躍時段（24 制）。end > 24 表示跨日：25 = 隔日 01:00。
+  activeHours: { start: 9, end: 25 },
+  // 自家貼文少於這個則數就不信實測的最佳時段，改用預設值（並在 log/UI 標明）。
+  bestTimeMinSamples: 10,
   perTagPosts: 8,
   searchCap7d: 400,
   newsFeeds: [],
