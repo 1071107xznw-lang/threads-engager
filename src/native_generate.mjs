@@ -4,6 +4,8 @@ import { gatherTagPosts } from './threads_search.mjs';
 import { fetchNewsTitles, fetchTrendingTopics } from './trends.mjs';
 import { generateDrafts } from './native_ai.mjs';
 import { rankTopics } from './topic_rank.mjs';
+import { bestHours, DEFAULT_ACTIVE_HOURS } from './best_time.mjs';
+import { planSchedule, DEFAULT_MIN_GAP_MINUTES } from './autoschedule.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 import { rankOwnPosts, summarizeMetrics } from './insights.mjs';
 
@@ -140,6 +142,37 @@ export async function runGeneration({
   );
   const reviewed = drafts.filter((d) => d.reviewNote).length;
 
+  // 8) 建議發文時間（🔴 只填時間，不核准——狀態維持 drafted，人還是要按核准）
+  let scheduled = 0;
+  let scheduleFallback = false;
+  if (brand.autoSchedule !== false && store.setNativeSuggestedTime) {
+    const activeHours = brand.activeHours || DEFAULT_ACTIVE_HOURS;
+    const hours = bestHours({
+      posts: rankedAll, activeHours,
+      minSamples: brand.bestTimeMinSamples ?? 10,
+    });
+    scheduleFallback = hours.fallback;
+    const times = planSchedule({
+      count: ids.length,
+      bestHours: hours.hours,
+      dailyCap: brand.dailyPublishCap ?? 15,
+      minGapMinutes: brand.minGapMinutes ?? DEFAULT_MIN_GAP_MINUTES,
+      activeHours,
+      existing: store.listOccupiedSlots ? store.listOccupiedSlots() : [],
+      now: new Date(nowIso),
+    });
+    times.forEach((iso, i) => { store.setNativeSuggestedTime(ids[i], iso); });
+    scheduled = times.length;
+    const when = times.length
+      ? `${new Date(times[0]).toLocaleString('zh-TW')} 起`
+      : '（排不進去，請檢查 dailyPublishCap / activeHours）';
+    log(`建議時間：已填 ${scheduled}/${ids.length} 則，${when}`);
+    log(hours.fallback
+      ? `   時段依預設值（自家樣本只有 ${hours.samples} 則，不足以算實測最佳時段）`
+      : `   時段依自家實測（${hours.samples} 則貼文的數據）`);
+    log('   ⚠️ 這只是建議時間——狀態仍是「待審核」，你按核准之後才會照這個時間發。');
+  }
+
   return {
     generated: ids.length,
     ids,
@@ -149,6 +182,8 @@ export async function runGeneration({
     ownPosts: ownPosts.length,
     knowledgeChars: kb.length,
     topicPool: topicPool.length, // 主題候選數（依聲量排序後餵給 AI 挑）
+    scheduled, // 填了建議時間的則數（仍是待審核，不是已排定發布）
+    scheduleFallback, // true = 時段用預設值，不是自家實測
     reviewed, // 被紅隊改寫過的則數
     insightsAvailable, // 有沒有讀到自家成效（false = token 缺 threads_manage_insights）
     topPosts: topPosts.length,

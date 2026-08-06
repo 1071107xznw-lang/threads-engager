@@ -89,6 +89,27 @@ async function loadConfig() {
   if (c.tokenExpiresInDays != null) bits.push(`Token 剩 ${c.tokenExpiresInDays} 天`);
   bits.push(liveMode ? '站內搜尋：開' : '站內搜尋：關（App 未 Live）');
   $('#statusbar').innerHTML = bits.join('　·　');
+  loadPublishQuota(); // 慢，不要擋住狀態列先顯示
+}
+
+// 官方發布額度（滾動 24 小時 250 則）。查不到就安靜跳過——這是資訊不是功能。
+async function loadPublishQuota() {
+  try {
+    const q = await api('/api/publish-quota');
+    if (!q || q.used == null) return;
+    const warn = q.remaining <= 10 ? ' ⚠️' : '';
+    $('#statusbar').innerHTML += `　·　今日已發 ${q.used}/${q.total}${warn}`;
+  } catch { /* 查不到就不顯示 */ }
+}
+
+// ISO → datetime-local 需要的 'YYYY-MM-DDTHH:mm'（本地時區）。
+// 不能直接切 toISOString——那是 UTC，會差 8 小時。
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 $('#dryrun').addEventListener('click', async () => {
@@ -119,7 +140,9 @@ async function loadNativeDrafted() {
       <div class="sched">
         <input class="topic" placeholder="主題（選填，如：調酒）" maxlength="50" value="${esc(d.topic || '')}" title="${d.topic ? 'AI 建議的主題，可自行修改' : ''}" />
         ${aiAvailable ? '<button class="suggest-topic" title="讓 AI 依內容建議主題">🎯 建議</button>' : ''}
-        <input class="when" type="datetime-local" title="排程時間（選填）" />
+        <input class="when" type="datetime-local" value="${toLocalInput(d.scheduledAt)}"
+          title="${d.scheduledAt ? '系統依最佳時段與每日上限算的建議時間，可自行修改。要照這個時間發，請按「排程」' : '排程時間（選填）'}" />
+        ${d.scheduledAt ? '<span class="sugg">⏰ 建議（可改）</span>' : ''}
       </div>
       <div class="actions">
         <button class="primary approve">核准（可立即發）</button>

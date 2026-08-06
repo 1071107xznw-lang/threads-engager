@@ -248,6 +248,23 @@ export function createStore(dbPath) {
       db.prepare('DELETE FROM native_drafts WHERE id=?').run(id);
       return { deleted: true };
     },
+    // 只寫「建議發文時間」，**不動 status**。
+    //
+    // 🔴 不能重用 setNativeSchedule——那個會順手把狀態設成 approved，
+    // 等於自動排程順便替人按了核准。規則 2 的界線就在這裡：時間可以自動算，
+    // 核准必須是人按的。publishDue 只撈 approved，所以待審的排程時間到了也不會送出。
+    setNativeSuggestedTime(id, scheduledAt) {
+      db.prepare('UPDATE native_drafts SET scheduledAt=? WHERE id=?').run(scheduledAt, id);
+    },
+    // 已被佔用的時段：已排程的（不分待審/已核准）+ 已發布的。
+    // 自動排程用它避開撞車、並算出某一天已經用掉幾則額度。
+    listOccupiedSlots() {
+      return db.prepare(`
+        SELECT COALESCE(scheduledAt, publishedAt) AS at FROM native_drafts
+        WHERE status IN ('drafted','approved','publishing','published')
+          AND COALESCE(scheduledAt, publishedAt) IS NOT NULL
+      `).all().map((r) => r.at);
+    },
     // 核准 + 排程一次到位：設 topic/scheduledAt，狀態改 approved
     setNativeSchedule(id, scheduledAt, topic = null) {
       db.prepare(

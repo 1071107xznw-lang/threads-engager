@@ -85,3 +85,68 @@ test('正常流程 create→wait→publish 依序執行', async () => {
   assert.equal(res.id, 'post');
   assert.equal(res.creationId, 'cont');
 });
+
+// ── 官方發布額度（滾動 24h 250 則）──
+test('parsePublishingLimit：解析官方回應', async () => {
+  const { parsePublishingLimit } = await import('../src/threads_publish.mjs');
+  assert.deepEqual(
+    parsePublishingLimit({ data: [{ quota_usage: 30, config: { quota_total: 250, quota_duration: 86400 } }] }),
+    { used: 30, total: 250, remaining: 220 }
+  );
+});
+
+test('parsePublishingLimit：缺 config 就用官方預設 250', async () => {
+  const { parsePublishingLimit } = await import('../src/threads_publish.mjs');
+  assert.deepEqual(parsePublishingLimit({ data: [{ quota_usage: 5 }] }), { used: 5, total: 250, remaining: 245 });
+});
+
+test('parsePublishingLimit：格式不對回 null（代表查不到，不是 0）', async () => {
+  const { parsePublishingLimit } = await import('../src/threads_publish.mjs');
+  assert.equal(parsePublishingLimit({}), null);
+  assert.equal(parsePublishingLimit({ data: [] }), null);
+  assert.equal(parsePublishingLimit({ data: [{ quota_usage: '?' }] }), null);
+});
+
+test('publishText：額度用完要在建容器之前就擋下來', async () => {
+  const { publishText } = await import('../src/threads_publish.mjs');
+  const calls = [];
+  const api = {
+    getPublishingLimit: async () => ({ data: [{ quota_usage: 250, config: { quota_total: 250 } }] }),
+    createTextContainer: async () => { calls.push('container'); return { id: 'c1' }; },
+    publishContainer: async () => ({ id: 'p1' }),
+  };
+  await assert.rejects(
+    () => publishText({ settings: { userId: 'u' }, accessToken: 't', text: '內容', api, dryRun: false, sleepImpl: async () => {}, log: () => {} }),
+    /額度已用完/
+  );
+  // 建了容器才失敗的話會留下無主的 container
+  assert.deepEqual(calls, [], '不可以先建容器');
+});
+
+test('publishText：額度查不到不擋發布（保護機制不是前提）', async () => {
+  const { publishText } = await import('../src/threads_publish.mjs');
+  const api = {
+    getPublishingLimit: async () => { throw new Error('沒權限'); },
+    createTextContainer: async () => ({ id: 'c1' }),
+    publishContainer: async () => ({ id: 'p1' }),
+  };
+  const r = await publishText({
+    settings: { userId: 'u' }, accessToken: 't', text: '內容', api,
+    dryRun: false, sleepImpl: async () => {}, log: () => {},
+  });
+  assert.equal(r.id, 'p1');
+});
+
+test('publishText：還有額度就照發', async () => {
+  const { publishText } = await import('../src/threads_publish.mjs');
+  const api = {
+    getPublishingLimit: async () => ({ data: [{ quota_usage: 3, config: { quota_total: 250 } }] }),
+    createTextContainer: async () => ({ id: 'c1' }),
+    publishContainer: async () => ({ id: 'p1' }),
+  };
+  const r = await publishText({
+    settings: { userId: 'u' }, accessToken: 't', text: '內容', api,
+    dryRun: false, sleepImpl: async () => {}, log: () => {},
+  });
+  assert.equal(r.id, 'p1');
+});

@@ -22,6 +22,15 @@
   ],
   "humor": "spicy",
   "draftsPerRun": 15,
+  "_排程說明": "autoSchedule 只會幫草稿填「建議發文時間」，不會替你核准——狀態仍是待審核，你按核准才會發。dailyPublishCap 管的不是 API 額度（官方是 250 則/24h），是「同一天發太多會自己稀釋推薦池」。真正的防線是 minGapMinutes。",
+  "autoSchedule": true,
+  "dailyPublishCap": 15,
+  "minGapMinutes": 55,
+  "activeHours": {
+    "start": 9,
+    "end": 25
+  },
+  "bestTimeMinSamples": 10,
   "perTagPosts": 8,
   "searchCap7d": 400,
   "hotTrendsFeeds": [

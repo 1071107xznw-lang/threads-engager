@@ -106,3 +106,64 @@ test('listDueScheduled 只回 approved+有排程+到期', () => {
   assert.equal(due.length, 1);
   store.close();
 });
+
+// ── 🔴 規則 2 的實際保障 ──
+// 自動排程會幫「待審核」的草稿填建議時間。那個時間到期時，
+// **絕對不可以**被發出去——人還沒按核准。這條守不住，整個工具就不合規了。
+test('🔴 publishDue 不發出「待審核但有排程時間」的貼文', async () => {
+  const store = createStore(':memory:');
+  const past = new Date(Date.now() - 60_000).toISOString();
+
+  // 待審核 + 建議時間已過期
+  const pending = store.insertNativeDraft({ draftText: '還沒核准的' });
+  store.setNativeSuggestedTime(pending, past);
+
+  // 已核准 + 同樣過期 → 這則才該發
+  const approved = store.insertNativeDraft({ draftText: '已核准的' });
+  store.setNativeSchedule(approved, past);
+
+  const sent = [];
+  const r = await publishDue({
+    store,
+    publish: async ({ text }) => { sent.push(text); return { id: 'p1' }; },
+    log: () => {},
+  });
+
+  assert.deepEqual(sent, ['已核准的'], '待審核的絕對不可以被送出');
+  assert.equal(r.published, 1);
+  assert.equal(store.getNativeDraft(pending).status, 'drafted', '待審核的狀態不該被動到');
+  store.close();
+});
+
+test('setNativeSuggestedTime：只寫時間，不動 status', () => {
+  const store = createStore(':memory:');
+  const id = store.insertNativeDraft({ draftText: 'x' });
+  store.setNativeSuggestedTime(id, '2026-08-10T21:00:00.000Z');
+  const row = store.getNativeDraft(id);
+  assert.equal(row.scheduledAt, '2026-08-10T21:00:00.000Z');
+  assert.equal(row.status, 'drafted', '自動排程不可以順便替人按核准');
+  store.close();
+});
+
+test('listOccupiedSlots：已排程的與已發布的都算佔用，略過的不算', () => {
+  const store = createStore(':memory:');
+  const a = store.insertNativeDraft({ draftText: 'a' });
+  store.setNativeSuggestedTime(a, '2026-08-10T13:00:00.000Z');
+
+  const b = store.insertNativeDraft({ draftText: 'b' });
+  store.setNativeSchedule(b, '2026-08-10T14:00:00.000Z');
+
+  const c = store.insertNativeDraft({ draftText: 'c' });
+  store.setNativeStatus(c, 'approved');
+  store.claimNativeForPublish(c);
+  store.markNativePublished(c, 'post_c', '2026-08-10T15:00:00.000Z');
+
+  const d = store.insertNativeDraft({ draftText: 'd' });
+  store.setNativeSuggestedTime(d, '2026-08-10T16:00:00.000Z');
+  store.setNativeStatus(d, 'skipped'); // 略過的不佔位
+
+  assert.deepEqual(store.listOccupiedSlots().sort(), [
+    '2026-08-10T13:00:00.000Z', '2026-08-10T14:00:00.000Z', '2026-08-10T15:00:00.000Z',
+  ]);
+  store.close();
+});
