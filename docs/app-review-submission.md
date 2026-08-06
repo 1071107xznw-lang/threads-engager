@@ -52,7 +52,16 @@ https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 | `threads_content_publish` | `POST /{user-id}/threads` + `/threads_publish`(發文與回覆共用) | ✅ 必送 |
 | `threads_keyword_search` | `GET /keyword_search` | ✅ 必送(這是你要解鎖的) |
 | `threads_manage_insights` | `GET /{media-id}/insights` | ✅ 必送(實測 200) |
-| `threads_manage_replies` | `GET /{media-id}/conversation` | ✅ **必送**(實測 200) |
+| `threads_manage_replies` | `GET /{media-id}/conversation`、`GET /{uid}/replies` | ✅ **必送**(實測 200) |
+
+> ⚠️ **你的 token 實際帶了 11 個權限，但工具只用上面這 5 個。**
+> 用 `debug_token` 撈出來的完整清單還包含：`threads_read_replies`、`threads_manage_mentions`、
+> `threads_delete`、`threads_location_tagging`、`threads_profile_discovery`、`threads_share_to_instagram`。
+> **這 6 個一個都不要送審**——「要求了用不到的權限」是常見退件原因。
+>
+> 附帶一個重要觀念：token **有** `threads_manage_mentions`，但 `/me/mentions` 仍然回
+> 「Application does not have permission」。**權限在 token 上 ≠ App 有進階存取權**；
+> 後者一定要送審。同理，`keyword_search` 現在能呼叫但只回自己的貼文，也是同一道牆。
 
 > ✅ **五個都實測過了**（2026-08-04，用 DB 裡的有效 token 逐一打）：
 > `/me` 200、`/{uid}/threads` 200 3 筆、`/insights` 200 3 個指標、`/conversation` 200、`keyword_search` 200 25 筆。
@@ -264,34 +273,22 @@ https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 
 ---
 
-## 第 6 步:在 Meta 後台實際送出
+## 第 6 步:在 Meta 後台實際送出（逐步）
 
 這段只有你能做——要登入你自己的 Meta 帳號、代表你的商家送件。我不會、也不該代替你登入或按送出。
 
-> ⏱ 材料都備好的話,後台操作大約 20 分鐘。審核回覆通常 **3–7 個工作天**。
+> ⏱ 材料備齊的話後台操作約 20 分鐘。審核回覆通常 **3–7 個工作天**。
+> ⚠️ **表單中途不能存草稿**，所以第 3、4 步的材料一定要先做完再開始填。
 
-### 6-1　先補完 Basic settings
+### 你的 App 資訊（實測撈出來的）
 
-<https://developers.facebook.com/apps> → 選你的 App → **App settings → Basic**
-
-| 欄位 | 填什麼 |
+| | |
 |---|---|
-| Privacy Policy URL | `https://1071107xznw-lang.github.io/threads-engager/privacy-policy` |
-| App icon | 1024×1024 PNG（拿 Argo 的 logo 就好，**必填**，沒有會擋送審） |
-| Category | **Business and pages** |
-| App domains | 留空（自架工具，沒有對外網域） |
-| User data deletion | 選 **Data deletion instructions URL** → 填 `https://1071107xznw-lang.github.io/threads-engager/privacy-policy` |
+| App 名稱 | **Threads Auto ARGO** |
+| Token 到期 | 2026-09-26 |
+| Token 實際帶的權限 | **11 個**，但工具只用 5 個 |
 
-填完按 **Save changes**。
-
-### 6-2　錄影 + 截圖
-
-照第 3、4 步做。**先做完這步再進 App Review**——表單中途沒有存草稿，材料沒備好會白填一輪。
-
-### 6-3　送出權限審核
-
-左側選單 **App Review → Permissions and Features** → 搜尋 `threads_` →
-對這五個各按 **Request advanced access**：
+**只送這 5 個**（其餘 6 個工具沒用到，送了會變成退件理由）：
 
 ```
 threads_basic
@@ -301,27 +298,116 @@ threads_manage_insights
 threads_manage_replies
 ```
 
-每一個都會要你填三件事，直接對應本文件：
+沒用到、**不要送**的：`threads_read_replies`、`threads_manage_mentions`、`threads_delete`、
+`threads_location_tagging`、`threads_profile_discovery`、`threads_share_to_instagram`。
 
-| 表單欄位 | 貼哪一段 |
+---
+
+### 6-0　先把材料做完（表單開始後就不能停）
+
+- [ ] 螢幕錄影（第 3 步分鏡）
+- [ ] 5 張截圖（第 4 步清單）
+- [ ] 這份文件開著，等一下要複製第 2、5 步的英文段落
+
+---
+
+### 6-1　開啟 Meta 開發者後台
+
+1. 瀏覽器開 **<https://developers.facebook.com/apps>**
+2. 用**管理這個 App 的 Facebook 帳號**登入（不是 Threads 帳號本身）
+3. 畫面上是你的 App 清單 → 點 **Threads Auto ARGO**
+4. 進去後左側是選單列，上方會顯示目前模式：**開發中 / Development**
+
+> 找不到 App？確認登入的帳號是當初建立 App 的那一個。App 只有管理員看得到。
+
+---
+
+### 6-2　補完 Basic settings（沒填會直接擋審核）
+
+左側選單 **應用程式設定 / App settings → 基本 / Basic**
+
+逐欄填：
+
+| 欄位 | 填什麼 |
 |---|---|
-| How will you use this permission? | 第 2 步該權限的英文段落 |
-| Demonstrate how it works (screencast) | 第 3 步錄的影片 |
-| Additional notes / testing instructions | 第 5 步那段 |
+| 隱私政策網址 / Privacy Policy URL | `https://1071107xznw-lang.github.io/threads-engager/privacy-policy` |
+| 使用者資料刪除 / User data deletion | 選 **Data deletion instructions URL**，填上面同一條網址 |
+| 應用程式圖示 / App icon | 上傳 **1024×1024 PNG**（Argo logo）。**必填，沒有會擋送審** |
+| 類別 / Category | 選 **Business and pages**（商業與粉絲專頁） |
+| 應用程式網域 / App domains | **留空**（自架工具，沒有對外網域） |
 
-`threads_basic` 通常是基本權限、可能不需審核就有——**後台顯示已是 advanced access 就跳過它**。
+拉到頁面最下面按 **儲存變更 / Save changes**。
 
-### 6-4　送出後
+> ✅ 存檔後，用**無痕視窗**貼一次隱私政策網址，確認打得開。審核官一定會點。
 
-- 狀態在 **App Review → Requests** 看
-- 被退件會寫理由 → 對照本文件「常見退件原因」修完可**重送，次數不限**
-- 全部通過後才做 [`go-live-checklist.md`](go-live-checklist.md) 的切 Live
+---
 
-### ⚠️ 送出前最後三個確認
+### 6-3　找到權限申請頁
 
-1. 用**無痕視窗**開一次隱私權政策，確定打得開
+左側選單 **應用程式審查 / App Review → 權限和功能 / Permissions and Features**
+
+1. 搜尋框輸入 `threads_`
+2. 畫面會列出所有 threads 相關權限，每個右邊有一顆按鈕：
+   - **要求進階存取權 / Request advanced access** ← 要按的是這顆
+   - 已經是進階的會顯示 **Advanced access**，那就跳過
+
+`threads_basic` 常常本來就是進階存取權——**顯示已是 Advanced access 就不用送**。
+
+---
+
+### 6-4　逐個權限填表（重複 4～5 次）
+
+每按一次 **Request advanced access** 會展開一份表單，三個欄位：
+
+| 表單問你 | 貼哪一段 |
+|---|---|
+| **你會如何使用這項權限？**<br>How will you use this permission? | 本文件**第 2 步**該權限的英文段落（原文貼上） |
+| **示範操作 / Screencast** | 上傳第 3 步錄的影片 |
+| **附註 / 測試說明**<br>Additional notes / testing instructions | 本文件**第 5 步**整段 |
+
+有些權限還會多問「這項功能對使用者的價值」——把第 2 步的**共用開場**貼上去。
+
+填完按該權限的 **送出 / Submit**。回到清單，換下一個。
+
+> 影片可以**同一支重複上傳**給每個權限，不用剪五支。
+
+---
+
+### 6-5　最後送出
+
+五個都填完後，頁面上方（或左側 **App Review → Requests**）會出現一個
+**提交以供審查 / Submit for Review** 的按鈕。
+
+按下去之前，最後確認：
+
+1. 用**無痕視窗**開一次隱私政策，確定打得開
 2. 影片裡**看得到按下核准的那一刻**，而且**沒被送出的那幾則還留在清單上**
 3. 影片裡**沒有**出現 token、密碼、`.env`、Tailscale IP
+4. **只送了那 5 個權限**
+
+按 **Submit**。
+
+---
+
+### 6-6　送出之後
+
+- 狀態在 **App Review → Requests** 看，會顯示 Pending / Approved / Rejected
+- 結果也會寄到 App 管理員的信箱
+- **被退件會寫明理由** → 對照本文件「常見退件原因」修完可**重送，次數不限**
+
+### 6-7　通過之後才做這三件
+
+1. App Dashboard 上方把模式從 **Development** 切成 **Live**
+2. `config/brand.json` 把 `useThreadsSearch` 改成 `true`
+3. 重啟服務：
+
+```bash
+launchctl kickstart -k gui/501/com.argo.threads-engager
+```
+
+驗證：「回覆審核」按「搜尋候選串」→ 應該開始撈到**別人**的公開串。
+
+詳見 [`go-live-checklist.md`](go-live-checklist.md)。
 
 ---
 
