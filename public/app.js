@@ -24,19 +24,43 @@ const goalBadge = (g) => (GOALS[g]
   : '');
 
 // ── 分頁切換 ──
+// 分頁狀態放在網址的 #hash 裡：重新整理不會跳回第一頁、可以把某個分頁加書籤或傳給人，
+// 也讓「用網址直接指定分頁」變得可能（例如截圖或做文件時）。
 let insightsLoaded = false; // 成效要打不少 API，改成「切到那頁才讀」
+
+function tabFromHash(hash, valid) {
+  const name = String(hash || '').replace(/^#/, '');
+  return valid.includes(name) ? name : null;
+}
+
+function showTab(name, { updateHash = true } = {}) {
+  const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+  const section = $('#' + name);
+  if (!tab || !section) return;
+  document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+  document.querySelectorAll('section').forEach((x) => x.classList.remove('active'));
+  tab.classList.add('active');
+  section.classList.add('active');
+  if (updateHash && location.hash !== '#' + name) location.hash = name;
+  if (name === 'insights' && !insightsLoaded) {
+    insightsLoaded = true;
+    loadInsights();
+  }
+}
+
+const TAB_NAMES = [...document.querySelectorAll('.tab')].map((t) => t.dataset.tab);
 document.querySelectorAll('.tab').forEach((t) => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-    document.querySelectorAll('section').forEach((x) => x.classList.remove('active'));
-    t.classList.add('active');
-    $('#' + t.dataset.tab).classList.add('active');
-    if (t.dataset.tab === 'insights' && !insightsLoaded) {
-      insightsLoaded = true;
-      loadInsights();
-    }
-  });
+  t.addEventListener('click', () => showTab(t.dataset.tab));
 });
+// 開頁時、以及上一頁/下一頁時，都以網址為準
+window.addEventListener('hashchange', () => {
+  const name = tabFromHash(location.hash, TAB_NAMES);
+  if (name) showTab(name, { updateHash: false });
+});
+{
+  const initial = tabFromHash(location.hash, TAB_NAMES);
+  if (initial) showTab(initial, { updateHash: false });
+}
 
 // ── 狀態列 + DRY_RUN 切換 ──
 let liveMode = false;
