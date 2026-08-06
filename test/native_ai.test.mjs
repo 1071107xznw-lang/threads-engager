@@ -318,6 +318,62 @@ test('POST_GOALS.story 帶齊三段結構與「不要提自己的店」', async 
   assert.match(b, /不要解釋笑點/);
 });
 
+test('POST_GOALS.story：要學的是結構，題材不綁酒', async () => {
+  const { POST_GOALS } = await import('../src/native_ai.mjs');
+  const b = POST_GOALS.story.brief;
+  // 這條原本寫死「素材從酒吧世界取」，等於把範例的「場景」誤當成它會紅的原因。
+  // 範例紅是因為結構，不是因為講酒——寫死題材反而砍掉最會被轉的那些題目。
+  assert.doesNotMatch(b, /素材從酒吧世界取/);
+  assert.match(b, /題材完全自由，不必跟酒有關/);
+  // 硬轉回酒是「這是廣告」的破綻，分享數會直接歸零
+  assert.match(b, /不准硬把結尾轉回酒/);
+  // 雙層笑點的說法要對所有題材成立，不能只寫「懂酒的人」
+  assert.match(b, /懂的人會多笑一層/);
+  assert.doesNotMatch(b, /懂酒的人會多笑一層/);
+});
+
+test('buildNativePrompt：有讀者輪廓就帶進去，並明講不要硬轉回產品', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({
+    persona: 'x',
+    audienceInterests: ['EDM 與電音場', 'K-POP 追星', '美食踩點'],
+    n: 1,
+  });
+  assert.match(p, /讀者輪廓/);
+  assert.match(p, /EDM 與電音場/);
+  assert.match(p, /K-POP 追星/);
+  assert.match(p, /硬轉回產品的貼文/);
+});
+
+test('buildNativePrompt：沒有讀者輪廓時不出現該段落', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.doesNotMatch(p, /讀者輪廓/);
+});
+
+test('buildNativePrompt：蹭熱搜不再要求「只挑跟店有關的」', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.doesNotMatch(p, /只挑能跟店/);
+  assert.match(p, /硬轉回產品比不蹭還糟/);
+});
+
+test('generateDrafts：讀者輪廓要傳到 prompt 裡（不能在中間掉包）', async () => {
+  const { generateDrafts } = await import('../src/native_ai.mjs');
+  let seen = '';
+  await generateDrafts({
+    persona: 'x',
+    audienceInterests: ['戰鬥陀螺'],
+    n: 1,
+    redTeam: false,
+    runner: async (prompt) => {
+      seen = prompt;
+      return '[{"text":"甲"}]';
+    },
+  });
+  assert.match(seen, /戰鬥陀螺/);
+});
+
 test('assignGoals：五種目標都輪得到', async () => {
   const { assignGoals } = await import('../src/native_ai.mjs');
   const mix = ['reach', 'engage', 'brand', 'share', 'story'];

@@ -50,14 +50,22 @@ export const POST_GOALS = {
   // 參考基準（實際觀察到的一則）：3,203 讚 / 326 分享 ≈ 10% 分享率。
   // 那則的結構是：高樓酒吧 → 有人示範「飛行」這杯喝了會飛 → 跟著喝的人摔死 →
   // 最後一句「超人，你喝醉之後真的很靠北」把前面全部重寫。
+  //
+  // ⚠️ 要學的是**那個結構**（鋪陳→誤導→最後一句翻轉），不是「酒吧題材」。
+  // 這條原本寫死「素材從酒吧世界取」，是抄錯重點：範例剛好發生在酒吧，
+  // 但它紅不是因為講酒。看調酒的人同時也在追 EDM／DJ／KPOP／中西洋金曲、也在吃美食，
+  // 寫他們在意的事就會被轉；硬把結尾轉回酒反而暴露這是廣告，直接殺掉分享。
   story: {
     label: '段子型',
     brief: '寫一則**完整的笑話或短故事**，目標是「有人願意把它轉述給別人」。'
-      + '結構三段：(1) 平常的鋪陳；(2) 一個讓人以為懂了的誤導；'
-      + '(3) **最後一句翻轉**——看完會想倒回去重看的那種。'
+      + '**唯一不能動的是結構**，三段：(1) 平常的鋪陳；(2) 一個讓人以為懂了的誤導；'
+      + '(3) **最後一句翻轉**——那一句要能把前面整段重寫，看完會想倒回去重看。'
       + '排版：每句一行、大量斷行，不要寫成一整塊。'
-      + '素材從酒吧世界取：調酒的名字與典故、酒客的類型、吧檯後面才看得到的事。'
-      + '**懂酒的人會多笑一層，不懂的人也看得懂**——這是被瘋傳的關鍵。'
+      + '**題材完全自由，不必跟酒有關**：讀者在意什麼就寫什麼——音樂、追星、電競、'
+      + '美食、上班、感情、當下的熱搜都可以（上面若有讀者輪廓，優先從那裡取材）。'
+      + '⚠️ **不准硬把結尾轉回酒、轉回店**。硬轉比不轉還糟：一被看出是廣告就沒人轉了。'
+      + '一則完全沒提到酒的段子，照樣是這個帳號的段子。'
+      + '**懂的人會多笑一層，不懂的人也看得懂**——這個雙層才是被瘋傳的關鍵。'
       + '講完就停，**絕對不要解釋笑點**，不要補「是不是很好笑」這種話。'
       + '**一個字都不要提自己的店**，沒有 hashtag、沒有 CTA、沒有地址——'
       + '零品牌提及正是它會被轉發的原因，加了就沒人轉了。',
@@ -83,12 +91,26 @@ export function buildNativePrompt({
   humor,              // 幽默尺度：mild／spicy／hellish
   topPosts = [],      // 自己成效最好的貼文（含 metrics）——學「什麼有效」
   searchTerms = [],   // 大家用什麼字找我們／我們想被搜到的字
+  audienceInterests = [], // 讀者除了我們賣的東西以外還在意什麼
   goals = [],         // 每則的任務分工（assignGoals 產生）
   knowledge = '', n = 3,
 }) {
   const lines = [];
   lines.push(`人設：${persona}`);
   lines.push('');
+  // 人設是「我是誰」，這段是「我在對誰講話」。少了它，AI 會把每一則都硬轉回產品。
+  if (audienceInterests.length) {
+    lines.push('【讀者輪廓——他們在意的不只有我們賣的東西】');
+    // 一行一項，不要用「、」串起來：項目本身就常含頓號（例「桌遊、戰鬥陀螺」），
+    // 串起來會分不出邊界，讀成一堆碎詞。
+    audienceInterests.slice(0, 20)
+      .map((t) => String(t).trim()).filter(Boolean)
+      .forEach((t) => lines.push(`- ${t}`));
+    lines.push('');
+    lines.push('※ 寫的時候想著這群人，不是想著「怎麼把話題轉回我的店」。');
+    lines.push('  一則戳中他們、卻完全沒提到我們產品的貼文，比一則硬轉回產品的貼文有效得多。');
+    lines.push('');
+  }
   lines.push(`請以上述品牌口吻，產生 ${n} 則適合發在 Threads 的原生貼文草稿。`);
   lines.push('可參考以下素材找靈感，但**不得照抄任何一句原文**：');
   lines.push('');
@@ -202,7 +224,10 @@ export function buildNativePrompt({
   lines.push('');
   lines.push('## 其他');
   lines.push('- 每則繁體中文、≤480 字，切入角度都不同（angle 一句話說明切入點）。');
-  lines.push('- 蹭熱搜要自然：只挑能跟店（喝酒聚會、觀賽、活動、美食）合理連結的主題。');
+  // 「見上面的讀者輪廓」只在真的有那一段時才寫，否則等於叫 AI 去看一個不存在的段落。
+  lines.push(`- 蹭熱搜要自然：挑**讀者也會在意**的主題${audienceInterests.length ? '（見上面的讀者輪廓）' : ''}，`);
+  lines.push('  不是只挑「跟我們產品有關」的。連得回自己很好，連不回去就不要連——');
+  lines.push('  **硬轉回產品比不蹭還糟**，那一句轉折就是別人看出這是廣告的地方。');
   lines.push('- 為每則建議「一個」最貼切的 Threads 主題(topic)：1 個簡短詞或詞組、≤20 字、');
   lines.push('  貼近該則內容、用貼文的語言、**不含句點/&/# 等符號**；想不到合適的就給空字串。');
   lines.push('');
@@ -339,6 +364,7 @@ export async function generateDrafts({
   ownPosts,
   topPosts = [],    // 自己成效最好的貼文（學「什麼有效」）
   searchTerms = [], // 在地／品牌搜尋字
+  audienceInterests = [], // 讀者輪廓（讓題材不必每則都繞回產品）
   goalMix,          // 這批的分工配比，如 ['reach','engage','brand','share']
   goalOffset = 0,   // 從配比第幾個開始輪（每批數量 < 配比長度時，靠它跨批次輪完一圈）
   humor,            // 幽默尺度
@@ -351,7 +377,7 @@ export async function generateDrafts({
   const goals = assignGoals(n, goalMix, goalOffset);
   const prompt = buildNativePrompt({
     persona, hotTrends, newsTitles, tagPosts, ownPosts,
-    topPosts, searchTerms, goals, knowledge, humor, n,
+    topPosts, searchTerms, audienceInterests, goals, knowledge, humor, n,
   });
   const raw = await runner(prompt);
   const drafts = parseDrafts(raw, { goals }); // 每則含 { text, angle, topic, goal }
