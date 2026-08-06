@@ -13,7 +13,7 @@
 |---|---|---|
 | 隱私權政策 URL | ✅ **已上線** | 見下方，直接複製 |
 | Token 有效 | ✅ 實測 `@argotaipei` 通過 | 到期 2026-09-26，錄影前不會過期 |
-| 五個權限實際可呼叫 | ✅ 全部實測 200 | 見第 1 步 |
+| 權限實際可呼叫 | ✅ 逐一實測 200 | 見第 1 步 |
 | App 圖示 / 顯示名稱 / 類別 | 待你填 | Basic settings,類別選 **Business** |
 | 商家/開發者驗證 | Meta 若要求才需要 | 依畫面指示 |
 
@@ -52,12 +52,27 @@ https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 | `threads_content_publish` | `POST /{user-id}/threads` + `/threads_publish`(發文與回覆共用) | ✅ 必送 |
 | `threads_keyword_search` | `GET /keyword_search` | ✅ 必送(這是你要解鎖的) |
 | `threads_manage_insights` | `GET /{media-id}/insights` | ✅ 必送(實測 200) |
-| `threads_manage_replies` | `GET /{media-id}/conversation`、`GET /{uid}/replies` | ✅ **必送**(實測 200) |
+| `threads_read_replies` | `GET /{media-id}/conversation`、`GET /{uid}/replies`（**讀**） | ✅ 必送 |
+| `threads_manage_replies` | 代表帳號**建立回覆** | ✅ 必送 |
 
-> ⚠️ **你的 token 實際帶了 11 個權限，但工具只用上面這 5 個。**
-> 用 `debug_token` 撈出來的完整清單還包含：`threads_read_replies`、`threads_manage_mentions`、
+> 📌 **為什麼 replies 要送兩個**：Meta 官方對這兩個權限的定義是分開的——
+> `threads_read_replies` 是「取得應用程式用戶擁有之串文的**回覆**」（唯讀）；
+> `threads_manage_replies` 是「代表 Threads 個人檔案**建立回覆**、隱藏或取消隱藏回覆，
+> 以及控制誰可以回覆」。
+>
+> 💬 留言區**同時做了兩件事**：讀（找出還沒回的留言）與寫（送出回覆），所以兩個都要。
+> 本工具**從不隱藏、從不取消隱藏、從不改動任何人的留言**——這點在用途說明裡要講清楚，
+> 免得審核官以為你要動別人的內容。
+>
+> ⚠️ 早期版本的本文件只列 `threads_manage_replies`，理由是實測 `/conversation` 回 200。
+> 但當時的 token **兩個權限都有**，那個測試分辨不出是哪一個在授權——結論下得太快。
+> 以 App Dashboard 上每個權限點進去的官方說明為準。
+
+> ⚠️ **你的 token 實際帶了 11 個權限，但工具只用上面這 6 個。**
+> 用 `debug_token` 撈出來的完整清單還包含：`threads_manage_mentions`、
 > `threads_delete`、`threads_location_tagging`、`threads_profile_discovery`、`threads_share_to_instagram`。
-> **這 6 個一個都不要送審**——「要求了用不到的權限」是常見退件原因。
+> **這 5 個一個都不要送審**——「要求了用不到的權限」是常見退件原因。
+> （`threads_read_replies` 原本也在這串裡，已改列為必送，理由見上表下方的說明。）
 >
 > 附帶一個重要觀念：token **有** `threads_manage_mentions`，但 `/me/mentions` 仍然回
 > 「Application does not have permission」。**權限在 token 上 ≠ App 有進階存取權**；
@@ -157,19 +172,39 @@ https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 > permission is not granted, the feature degrades silently and the rest of the product
 > continues to work.
 
-### `threads_manage_replies` — 只有已勾選才送
+### `threads_read_replies`
 
-> We use `GET /{threads-media-id}/conversation` to read the public replies left on the
-> connected owner's **own** posts, together with the `replied_to` field, so we can determine
-> which replies the owner has **not yet answered**.
+> We use `threads_read_replies` for the two **read-only** calls that power the replies inbox:
 >
-> This powers an "inbox" screen: unanswered replies on the owner's own posts are listed, a
-> suggested response is drafted for each, and the owner approves each one individually before
-> it is sent. This is ordinary community management — the account owner responding to people
-> who commented on their own content.
+> 1. `GET /{threads-media-id}/conversation` (with the `replied_to` field) — reads the public
+>    replies left on the connected owner's **own** posts, so we can determine which replies the
+>    owner has **not yet answered**.
+> 2. `GET /{threads-user-id}/replies` — reads the owner's **own** past replies. These are used
+>    only as writing-style samples, so that suggested responses sound like the same person
+>    rather than generic AI text. Posts and replies are written in different registers, so
+>    samples taken from the owner's replies produce far more natural suggestions than samples
+>    taken from their posts.
 >
-> We only read conversations belonging to the connected owner's own media. We do not hide,
-> delete, or moderate anyone's replies.
+> Both calls read only content belonging to the connected owner: replies left on their own
+> posts, and replies they themselves wrote. We do not read conversations on other accounts'
+> media. Nothing is sent as a result of these calls — they only populate a local review queue
+> that a human must approve from, item by item.
+
+### `threads_manage_replies`
+
+> We use `threads_manage_replies` for one thing only: **creating a reply on behalf of the
+> connected owner's own profile**, using `reply_to_id` on the reply container
+> (`POST /{threads-user-id}/threads` followed by `POST /{threads-user-id}/threads_publish`).
+>
+> This is ordinary community management — the account owner answering people who commented on
+> their own posts. Every reply is written to a local queue with status `drafted`, and is sent
+> only after a human clicks "核准 / Approve" on that specific item in the review dashboard.
+> There is no code path that sends an unapproved reply.
+>
+> **We never hide or unhide replies, never delete anyone's content, and never change who is
+> allowed to reply.** The product has no user interface for any of those actions and the
+> `manage_reply` endpoint is not called anywhere in the source. The only write this permission
+> is used for is publishing the owner's own approved reply.
 
 ---
 
@@ -290,17 +325,18 @@ https://1071107xznw-lang.github.io/threads-engager/privacy-policy
 | Token 到期 | 2026-09-26 |
 | Token 實際帶的權限 | **11 個**，但工具只用 5 個 |
 
-**只送這 5 個**（其餘 6 個工具沒用到，送了會變成退件理由）：
+**只送這 6 個**（其餘 5 個工具沒用到，送了會變成退件理由）：
 
 ```
 threads_basic
 threads_content_publish
 threads_keyword_search
 threads_manage_insights
+threads_read_replies
 threads_manage_replies
 ```
 
-沒用到、**不要送**的：`threads_read_replies`、`threads_manage_mentions`、`threads_delete`、
+沒用到、**不要送**的：`threads_manage_mentions`、`threads_delete`、
 `threads_location_tagging`、`threads_profile_discovery`、`threads_share_to_instagram`。
 
 ---
@@ -365,12 +401,12 @@ threads_manage_replies
 
 > 💡 **不必等審核就能繼續用**：把自己的帳號加成 **Threads Tester**
 > （App Dashboard → **App roles → Roles** → Add People → 選 Threads Tester），
-> 測試者帳號可以立刻取得全部五個權限，不需要 App Review。
+> 測試者帳號可以立刻取得全部權限，不需要 App Review。
 > 這不會解鎖 `keyword_search` 搜到別人的貼文（那要 Live），但開發與自用完全夠。
 
 ---
 
-### 6-4　逐個權限填表（重複 4～5 次）
+### 6-4　逐個權限填表（重複 5～6 次）
 
 每按一次 **Request advanced access** 會展開一份表單，三個欄位：
 
@@ -398,7 +434,7 @@ threads_manage_replies
 1. 用**無痕視窗**開一次隱私政策，確定打得開
 2. 影片裡**看得到按下核准的那一刻**，而且**沒被送出的那幾則還留在清單上**
 3. 影片裡**沒有**出現 token、密碼、`.env`、Tailscale IP
-4. **只送了那 5 個權限**
+4. **只送了那 6 個權限**
 
 按 **Submit**。
 
