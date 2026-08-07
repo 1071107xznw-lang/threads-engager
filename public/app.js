@@ -145,7 +145,8 @@ async function loadNativeDrafted() {
         ${d.scheduledAt ? '<span class="sugg">⏰ 建議（可改）</span>' : ''}
       </div>
       <div class="actions">
-        <button class="primary approve">核准（可立即發）</button>
+        <button class="primary approve">核准</button>
+        <button class="danger approve-publish" title="核准並馬上發到 Threads，不用再跳去下一個分頁">🚀 核准並發布</button>
         <button class="schedule">排程</button>
         ${aiAvailable ? '<button class="regen" title="這則不滿意，換一則。分工不變，只換內容">🔄 重新生成</button>' : ''}
         <button class="skip">跳過</button>
@@ -180,6 +181,40 @@ function updateCounts() {
     c.style.color = n > 500 ? '#b3261e' : '#999';
   });
 }
+
+// ⏰ 全部排程：把待審核裡每則都核准 + 照各自欄位裡的時間排。
+// 一批 15 則時，這是把 30 次點擊變成 1 次的地方。
+// 帶著卡片當下的文字送出，不然剛手改的內容會被丟掉。
+$('#scheduleAll').addEventListener('click', async () => {
+  const cards = [...document.querySelectorAll('#ndrafted .card')];
+  const items = cards.map((c) => ({
+    id: Number(c.dataset.id),
+    text: c.querySelector('textarea').value,
+    topic: (c.querySelector('.topic')?.value || '').trim(),
+    scheduledAt: c.querySelector('.when')?.value || '',
+  })).filter((it) => it.scheduledAt);
+
+  const noTime = cards.length - items.length;
+  if (!items.length) { alert('沒有任何一則填了時間。先設定時間，或用單則的按鈕。'); return; }
+  const tooLong = items.filter((it) => [...it.text].length > 500);
+  if (tooLong.length) { alert(`有 ${tooLong.length} 則超過 500 字（#${tooLong.map((t) => t.id).join(' #')}），請先縮短`); return; }
+  if (!confirm(
+    `把 ${items.length} 則核准並排程？${noTime ? `\n（另外 ${noTime} 則沒填時間，會留在待審核）` : ''}`
+    + '\n\n時間到會自動發出去，之後只能到 Threads 上刪。'
+  )) return;
+
+  const btn = $('#scheduleAll');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = '排程中…';
+  try {
+    const r = await api('/api/native/schedule-all', { method: 'POST', body: JSON.stringify({ items }) });
+    if (r.error) { $('#nstatus').textContent = '排程失敗：' + r.error; return; }
+    const bad = (r.skipped || []).length;
+    $('#nstatus').textContent = `⏰ 已排程 ${r.scheduled} 則`
+      + (bad ? `，${bad} 則沒處理：${r.skipped.map((s) => `#${s.id}（${s.why}）`).join('、')}` : '');
+    await loadNativeDrafted();
+    await loadNativeApproved();
+  } finally { btn.disabled = false; btn.textContent = old; }
+});
 
 $('#gen').addEventListener('click', async () => {
   $('#gen').disabled = true;
@@ -340,6 +375,37 @@ $('#ndrafted').addEventListener('click', async (e) => {
       if (why2) why2.value = '';
       updateCounts();
     } finally { btn.disabled = false; btn.textContent = old; }
+    return;
+  }
+  // 🚀 核准並發布：省掉換分頁，但**不省確認** —— 發出去就收不回來了。
+  if (e.target.classList.contains('approve-publish')) {
+    const btn = e.target;
+    if ([...text].length > 500) { alert('超過 500 字，請縮短再發'); return; }
+    if (!confirm($('#dryrun').dataset.dry === '1'
+      ? '這則會核准並「乾跑」發布（DRY_RUN 開著，不會真的送出）。確定？'
+      : '確定核准並「立刻」發到 Threads？發出去就收不回來了。')) return;
+    btn.disabled = true; const old = btn.textContent; btn.textContent = '發布中…';
+    $('#nstatus').textContent = `發布 #${id} 中…（建立容器後約等 30 秒）`;
+    try {
+      await api(`/api/native/${id}/draft`, { method: 'POST', body: JSON.stringify({ editedText: text }) });
+      const r = await api(`/api/native/${id}/approve-publish`, {
+        method: 'POST', body: JSON.stringify({ topic }),
+      });
+      if (r.error) {
+        $('#nstatus').textContent = '發布失敗：' + r.error;
+        btn.disabled = false; btn.textContent = old;
+        await loadNativeDrafted(); // 失敗會轉 failed，卡片要重畫才不會誤導
+        return;
+      }
+      $('#nstatus').textContent = r.dryRun
+        ? `🧪 DRY_RUN：未實際發布 #${id}`
+        : `✅ 已發布 #${id}（post ${r.id}）`;
+      card.remove();
+      await loadNativeApproved();
+    } catch (err) {
+      $('#nstatus').textContent = '發布失敗：' + (err.message || err);
+      btn.disabled = false; btn.textContent = old;
+    }
     return;
   }
   if (e.target.classList.contains('approve')) {
