@@ -71,6 +71,10 @@ export const POST_GOALS = {
       + '⚠️ **段子最容易寫得太乾淨、太安全，那就等於沒寫**。'
       + '照上面的幽默尺度放開來：該黃就黃、該地獄就地獄、該賤就賤。'
       + '一則沒有人敢轉的段子跟一則沒人看的公告一樣沒用。'
+      + '⚠️ **用字要像人在講話，不是像人在寫作**：'
+      + '短、破、有情緒，語助詞跟不完整句都可以。'
+      + '「他愣了三秒」比「他陷入了短暫的沉默」好一百倍。'
+      + '整則唸出來要像在跟朋友講一件很好笑的事——**唸不順就是還沒寫好**。'
       + '講完就停，**絕對不要解釋笑點**，不要補「是不是很好笑」這種話。'
       + '**一個字都不要提自己的店**，沒有 hashtag、沒有 CTA、沒有地址——'
       + '零品牌提及正是它會被轉發的原因，加了就沒人轉了。',
@@ -97,6 +101,7 @@ export function buildNativePrompt({
   topPosts = [],      // 自己成效最好的貼文（含 metrics）——學「什麼有效」
   searchTerms = [],   // 大家用什麼字找我們／我們想被搜到的字
   audienceInterests = [], // 讀者除了我們賣的東西以外還在意什麼
+  recentDrafts = [],  // 最近產過的草稿（不分狀態）——用來擋「同一件事寫第八遍」
   topicPool = [],     // 排序過的 Threads 主題候選（topic_rank.rankTopics 產生）
   goals = [],         // 每則的任務分工（assignGoals 產生）
   avoid = null,       // 重新生成用：{ text, reason } —— 上一版被打回票了
@@ -161,6 +166,21 @@ export function buildNativePrompt({
     lines.push('');
     lines.push('※ 從上面學：句子長短、慣用詞、標點與 emoji 習慣、斷行節奏、怎麼稱呼讀者。');
     lines.push('  目標是「同一個人寫的」，不是「寫得很好」。也要避免重複已經發過的主題。');
+    lines.push('');
+  }
+  // 🔴 去重清單。這個必須包含「還沒發布的草稿」——重複的稿多半在被看出重複的
+  // 那一刻就停在 skipped，只看已發布的等於看不到自己已經把同一件事寫了七遍。
+  if (recentDrafts.length) {
+    lines.push('【⛔ 最近已經寫過這些——不准再寫同一個點】');
+    recentDrafts.slice(0, 30).forEach((t, i) => {
+      lines.push(`${i + 1}. ${String(t).replace(/\s+/g, ' ').slice(0, 70)}`);
+    });
+    lines.push('');
+    lines.push('※ 不是「不要用一樣的句子」，是**不要再講同一件事**。');
+    lines.push('  換個說法重寫上面任何一則，都算違規。');
+    lines.push('  尤其注意：同一條知識庫事實被反覆拿出來寫，就是這種狀況。');
+    lines.push('  知識庫裡沒有新的內行細節可用時，**寧可寫讀者輪廓裡的題材**，');
+    lines.push('  也不要把講過的事再包裝一次。');
     lines.push('');
   }
   if (topPosts.length) {
@@ -234,7 +254,16 @@ export function buildNativePrompt({
   lines.push('- **第一行就是鉤子**：Threads 會折疊，第一行決定別人要不要展開。');
   lines.push('  不要暖場、不要「大家好」、不要先鋪陳背景。');
   lines.push('- 短句、多斷行，手機一行不要太長。用空行分段。');
-  lines.push('- 像真人在跟朋友講話：可以有語氣詞、可以不完整句、可以自嘲或碎念。');
+  lines.push('- **用網路上真的有人在講的話**，不是用寫的。具體來說：');
+  lines.push('  · 語助詞、破格句、不完整句都可以：「欸不是」「蛤？」「我就問」「認真」「誰懂」');
+  lines.push('  · 情緒詞直接上：笑死、傻眼、崩潰、裂開、可以、不行、太可以了');
+  lines.push('  · 可以沒有主詞、可以省標點、可以用破折號硬轉');
+  lines.push('- ⛔ **書面語直接殺死活人感**，這些一個都不要出現：');
+  lines.push('  「其實」「然而」「或許」「值得一提的是」「不僅…更是」「在這個◯◯的時代」');
+  lines.push('  「讓我們一起」「相信大家都」「總而言之」');
+  lines.push('- ⚠️ 但**不要為了潮而硬塞流行語**。上面是「允許」不是「規定」——');
+  lines.push('  一句話裡塞三個梗會變成中年人在模仿年輕人，比書面語還慘。');
+  lines.push('  標準是：**你把這句話唸出來，像不像人講的？**不像就重寫。');
   lines.push('- **有觀點、敢站隊**——但立場只能建立在知識庫或「我們自己的做法/偏好」上。');
   lines.push('- 具體細節 > 形容詞（「先冰 20 分鐘」勝過「口感絕佳」）。');
   lines.push('- 結尾留一個讓人想回話的東西：問題、邀戰、或沒說完的話。');
@@ -423,6 +452,7 @@ export async function generateDrafts({
   topPosts = [],    // 自己成效最好的貼文（學「什麼有效」）
   searchTerms = [], // 在地／品牌搜尋字
   audienceInterests = [], // 讀者輪廓（讓題材不必每則都繞回產品）
+  recentDrafts = [], // 最近產過的（不分狀態）——擋「同一件事寫第八遍」
   topicPool = [],   // 排序過的主題候選（優先挑聲量大的）
   goalMix,          // 這批的分工配比，如 ['reach','engage','brand','share']
   goalOffset = 0,   // 從配比第幾個開始輪（每批數量 < 配比長度時，靠它跨批次輪完一圈）
@@ -436,7 +466,7 @@ export async function generateDrafts({
   const goals = assignGoals(n, goalMix, goalOffset);
   const prompt = buildNativePrompt({
     persona, hotTrends, newsTitles, tagPosts, ownPosts,
-    topPosts, searchTerms, audienceInterests, topicPool, goals, knowledge, humor, n,
+    topPosts, searchTerms, audienceInterests, recentDrafts, topicPool, goals, knowledge, humor, n,
   });
   const raw = await runner(prompt);
   const drafts = parseDrafts(raw, { goals }); // 每則含 { text, angle, topic, goal }

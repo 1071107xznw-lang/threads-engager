@@ -202,6 +202,17 @@ export function createStore(dbPath) {
       );
       return info.lastInsertRowid;
     },
+    // 最近產過的草稿內容（**不分狀態**）。用途：產稿時當「這些寫過了」的禁止清單。
+    //
+    // 為什麼不能只看已發布的：重複的稿多半在你看到重複、按下略過的那一刻就停在
+    // skipped/drafted，永遠不會被發布。只餵已發布的，系統就永遠不知道自己
+    // 已經把同一件事寫了七遍（實際踩過：brand 型 23 則裡 7 則都在講紅酒冰鎮）。
+    listRecentNativeTexts(limit = 30) {
+      return db.prepare(`
+        SELECT COALESCE(editedText, draftText) AS t FROM native_drafts
+        ORDER BY id DESC LIMIT ?
+      `).all(limit).map((r) => r.t).filter(Boolean);
+    },
     // 至今總共產過幾則原生草稿。用途：goalMix 的輪替起點——
     // 每批草稿數小於配比長度時，靠它讓後面的目標跨批次輪得到。
     countNativeDrafts() {
