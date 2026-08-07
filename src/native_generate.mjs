@@ -101,6 +101,8 @@ export async function runGeneration({
     }
   }
   const topicPool = rankTopics({ hotTrends, ownHistory: ownTopicHistory });
+  const recentDrafts = store.listRecentNativeTexts ? store.listRecentNativeTexts(30) : [];
+  if (recentDrafts.length) log(`去重清單：最近 ${recentDrafts.length} 則草稿會當「不准再寫」的禁止清單`);
   log(`主題候選：${topicPool.length} 個${ownTopicHistory.length ? `（其中 ${ownTopicHistory.length} 則有自家成效可參考）` : '（尚無自家成效，純看搜尋熱度）'}`);
 
   // 4c) 搜尋字訊號：顧客實際用什麼字找我們（localSearchTerms）＋ 我們想被搜到的字（tags）
@@ -121,6 +123,10 @@ export async function runGeneration({
     topPosts, searchTerms, goalMix: brand.goalMix, humor: brand.humor,
     audienceInterests: brand.audienceInterests || [],
     topicPool,
+    // ⛔ 去重：把最近產過的草稿（不分狀態）當禁止清單。
+    // 只餵「已發布」的不夠——重複的稿多半在被看出重複的當下就停在 skipped，
+    // 系統於是永遠不知道自己已經把同一件事寫了七遍。
+    recentDrafts,
     // 從「已產過幾則」接著輪：draftsPerRun 小於 goalMix 長度時（例如 3 則 vs 4 種目標），
     // 沒有這個 offset 的話，排在後面的目標會永遠輪不到。
     goalOffset: store.countNativeDrafts?.() ?? 0,

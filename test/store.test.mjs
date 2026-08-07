@@ -267,3 +267,30 @@ test('listPublishedNativeTopics：只回已發布且有主題的', () => {
   assert.deepEqual(s.listPublishedNativeTopics(), [{ publishedPostId: 'post_a', topic: '調酒' }]);
   s.close();
 });
+
+test('listRecentNativeTexts：不分狀態都要撈（略過的才是重複的大宗）', () => {
+  const s = createStore(':memory:');
+  const a = s.insertNativeDraft({ draftText: '紅酒那則一' });
+  s.setNativeStatus(a, 'skipped');            // 被看出重複而略過的
+  const b = s.insertNativeDraft({ draftText: '紅酒那則二' });   // 還在待審
+  const c = s.insertNativeDraft({ draftText: '已發布的' });
+  s.setNativeStatus(c, 'approved');
+  s.claimNativeForPublish(c);
+  s.markNativePublished(c, 'p1');
+  const out = s.listRecentNativeTexts(10);
+  assert.equal(out.length, 3, '只看已發布的話，就看不到自己在複讀什麼');
+  assert.ok(out.includes('紅酒那則一'));
+  assert.ok(out.includes('紅酒那則二'));
+  assert.ok(b && out.includes('已發布的'));
+  s.close();
+});
+
+test('listRecentNativeTexts：以手改後的內容為準，並吃 limit', () => {
+  const s = createStore(':memory:');
+  const id = s.insertNativeDraft({ draftText: '原稿' });
+  s.editNativeDraft(id, '我改過的');
+  for (let i = 0; i < 5; i += 1) s.insertNativeDraft({ draftText: `其他${i}` });
+  assert.equal(s.listRecentNativeTexts(3).length, 3);
+  assert.ok(s.listRecentNativeTexts(99).includes('我改過的'));
+  s.close();
+});

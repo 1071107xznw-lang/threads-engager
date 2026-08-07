@@ -549,3 +549,73 @@ test('POST_GOALS.story：明講不要寫得太乾淨（照幽默尺度放開）'
   assert.match(POST_GOALS.story.brief, /段子最容易寫得太乾淨、太安全/);
   assert.match(POST_GOALS.story.brief, /該黃就黃、該地獄就地獄/);
 });
+
+// ── ⛔ 不准把同一件事寫第八遍 ──
+// 實際踩過：brand 型 23 則裡有 7 則都在講「夏天把輕一點的紅酒冰一下」，
+// 因為那是知識庫裡唯一一條「內行細節」。語氣樣本只餵已發布的貼文，
+// 而重複稿多半在被看出重複的當下就停在 skipped —— 系統於是看不到自己在複讀。
+test('buildNativePrompt：最近寫過的要當禁止清單餵進去', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({
+    persona: 'x', n: 3,
+    recentDrafts: ['夏天有些紅酒我會偷偷冰一下', '調酒喝不慣可以請 bartender 調'],
+  });
+  assert.match(p, /最近已經寫過這些/);
+  assert.match(p, /夏天有些紅酒我會偷偷冰一下/);
+  assert.match(p, /不准再寫同一個點/);
+});
+
+test('buildNativePrompt：去重講的是「同一件事」，不是「同一個句子」', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', n: 1, recentDrafts: ['甲'] });
+  // 只擋字面重複的話，模型換句話說就繞過去了——那正是踩到的失敗模式
+  assert.match(p, /不是「不要用一樣的句子」/);
+  assert.match(p, /換個說法重寫上面任何一則，都算違規/);
+  // 同一條知識庫事實反覆使用，是這個問題的真正來源
+  assert.match(p, /同一條知識庫事實被反覆拿出來寫/);
+});
+
+test('buildNativePrompt：沒有最近草稿時不出現該段落', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  assert.doesNotMatch(buildNativePrompt({ persona: 'x', n: 1 }), /最近已經寫過這些/);
+});
+
+// ── 迷因感 / 活人感 ──
+test('buildNativePrompt：用詞要像人在講話，並列出具體的書面語禁字', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  assert.match(p, /用網路上真的有人在講的話/);
+  assert.match(p, /欸不是/);
+  assert.match(p, /笑死/);
+  // 抽象地說「像真人講話」沒有用，要指名道姓地擋掉書面語
+  assert.match(p, /書面語直接殺死活人感/);
+  assert.match(p, /值得一提的是/);
+});
+
+test('buildNativePrompt：但不准為了潮而硬塞流行語', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', n: 1 });
+  // 只給允許清單，模型會一句話塞三個梗——比書面語還慘
+  assert.match(p, /不要為了潮而硬塞流行語/);
+  assert.match(p, /中年人在模仿年輕人/);
+  assert.match(p, /唸出來，像不像人講的/);
+});
+
+test('POST_GOALS.story：用字要像講話不是像寫作', async () => {
+  const { POST_GOALS } = await import('../src/native_ai.mjs');
+  const b = POST_GOALS.story.brief;
+  assert.match(b, /像人在講話，不是像人在寫作/);
+  assert.match(b, /他愣了三秒/); // 具體對照組比抽象要求有效
+  assert.match(b, /唸不順就是還沒寫好/);
+});
+
+test('generateDrafts：去重清單要真的傳到 prompt（不能在中間掉包）', async () => {
+  const { generateDrafts } = await import('../src/native_ai.mjs');
+  let seen = '';
+  await generateDrafts({
+    persona: 'x', n: 1, redTeam: false,
+    recentDrafts: ['紅酒冰鎮那則'],
+    runner: async (p) => { seen = p; return '[{"text":"新的"}]'; },
+  });
+  assert.match(seen, /紅酒冰鎮那則/);
+});
