@@ -69,6 +69,8 @@ export function createStore(dbPath) {
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN scheduledAt TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN reviewNote TEXT'); } catch { /* 已存在 */ }
   try { db.exec('ALTER TABLE native_drafts ADD COLUMN goal TEXT'); } catch { /* 已存在 */ }
+  // 蹭當下熱度的稿：排程時要搶最早的時段，不是最好的時段。
+  try { db.exec('ALTER TABLE native_drafts ADD COLUMN timeSensitive INTEGER'); } catch { /* 已存在 */ }
   // 以 targetId 去重的部分唯一索引：徹底封死並發下同一則貼文排成兩列（各回一次）。
   // 允許多個 NULL（並非每則 post 都有 targetId）。既有資料若已有重複則建索引會失敗 → 忽略，仍有應用層去重。
   try {
@@ -188,12 +190,14 @@ export function createStore(dbPath) {
     // ── 原生貼文草稿佇列 ──
     insertNativeDraft({
       draftText, angle = null, sourceSummary = null, topic = null, reviewNote = null, goal = null,
+      timeSensitive = false,
     }) {
       const info = db.prepare(`
-        INSERT INTO native_drafts (draftText, angle, sourceSummary, topic, reviewNote, goal, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO native_drafts (draftText, angle, sourceSummary, topic, reviewNote, goal, timeSensitive, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         draftText, angle, sourceSummary, topic || null, reviewNote || null, goal || null,
+        timeSensitive ? 1 : 0,
         new Date().toISOString()
       );
       return info.lastInsertRowid;

@@ -39,15 +39,21 @@ function slotsForDay({ now, dayOffset, activeHours, minGapMinutes }) {
 //
 // 參數：
 //   bestHours   —— 小時偏好順序（好→差），best_time.bestHours().hours
+//   urgentCount —— 其中有幾則是「蹭當下熱度」的。這幾則搶**最早**的時段，
+//                  不管那個時段的平均成效好不好——熱搜晚幾小時就過期了，
+//                  排到今晚 22 點的「黃金時段」也救不回來。其餘才挑最佳時段。
 //   dailyCap    —— 每個「本地日」最多幾則（含已經佔用的）
 //   existing    —— 已佔用的時間（ISO 字串陣列）：已排程的、已發布的都算
 //   now         —— 現在（可注入，測試用）
 //   horizonDays —— 最多往後排幾天，避免設定錯誤時排到天荒地老
 //
 // 回傳 count 個 ISO 字串，已依時間排序。排不完就回比較少的（不硬塞）。
+// 因為急件搶的是最早的時段，回傳陣列的**前 urgentCount 個就是給急件的**——
+// 上層把急件排在前面直接對位即可。
 export function planSchedule({
   count,
   bestHours = [],
+  urgentCount = 0,
   dailyCap = 15,
   minGapMinutes = DEFAULT_MIN_GAP_MINUTES,
   activeHours = DEFAULT_ACTIVE_HOURS,
@@ -81,34 +87,45 @@ export function planSchedule({
   bestHours.forEach((h, i) => { if (rankOf.has(h)) rankOf.set(h, i); });
 
   const picked = [];
-  for (let dayOffset = 0; dayOffset < horizonDays && picked.length < need; dayOffset += 1) {
-    const dayStart = new Date(nowMs);
-    dayStart.setDate(dayStart.getDate() + dayOffset);
-    const key = localDateKey(dayStart);
-    let room = cap - (usedPerDay.get(key) || 0);
-    if (room <= 0) continue;
 
-    const candidates = slotsForDay({ now, dayOffset, activeHours, minGapMinutes: gap })
-      .filter((d) => d.getTime() >= earliest)
-      // 跟已佔用的、以及這次已挑的，都要拉開至少一個間隔
-      .filter((d) => ![...takenMs, ...picked.map((p) => p.getTime())]
-        .some((t) => Math.abs(t - d.getTime()) < gap * 60_000));
+  // 挑 n 個時段。byTime=true 代表「越早越好」（急件），否則「時段越好越優先」。
+  function pick(n, byTime) {
+    let got = 0;
+    for (let dayOffset = 0; dayOffset < horizonDays && got < n; dayOffset += 1) {
+      const dayStart = new Date(nowMs);
+      dayStart.setDate(dayStart.getDate() + dayOffset);
+      const key = localDateKey(dayStart);
+      // usedPerDay 要隨挑隨加——第二輪要看得到第一輪用掉的額度
+      if (cap - (usedPerDay.get(key) || 0) <= 0) continue;
 
-    // 好時段先挑；同分照時間先後
-    candidates.sort((a, b) => {
-      const ra = rankOf.get(a.getHours()) ?? Number.MAX_SAFE_INTEGER;
-      const rb = rankOf.get(b.getHours()) ?? Number.MAX_SAFE_INTEGER;
-      return ra - rb || a.getTime() - b.getTime();
-    });
+      const candidates = slotsForDay({ now, dayOffset, activeHours, minGapMinutes: gap })
+        .filter((d) => d.getTime() >= earliest)
+        // 跟已佔用的、以及這次已挑的，都要拉開至少一個間隔
+        .filter((d) => ![...takenMs, ...picked.map((p) => p.getTime())]
+          .some((t) => Math.abs(t - d.getTime()) < gap * 60_000));
 
-    for (const slot of candidates) {
-      if (room <= 0 || picked.length >= need) break;
-      // 挑一個就要重新確認間隔——同一輪內先挑的會擋掉後面相鄰的候選
-      if (picked.some((p) => Math.abs(p.getTime() - slot.getTime()) < gap * 60_000)) continue;
-      picked.push(slot);
-      room -= 1;
+      candidates.sort((a, b) => {
+        if (byTime) return a.getTime() - b.getTime();
+        const ra = rankOf.get(a.getHours()) ?? Number.MAX_SAFE_INTEGER;
+        const rb = rankOf.get(b.getHours()) ?? Number.MAX_SAFE_INTEGER;
+        return ra - rb || a.getTime() - b.getTime();
+      });
+
+      for (const slot of candidates) {
+        if (got >= n || cap - (usedPerDay.get(key) || 0) <= 0) break;
+        // 挑一個就要重新確認間隔——同一輪內先挑的會擋掉後面相鄰的候選
+        if (picked.some((p) => Math.abs(p.getTime() - slot.getTime()) < gap * 60_000)) continue;
+        picked.push(slot);
+        usedPerDay.set(key, (usedPerDay.get(key) || 0) + 1);
+        got += 1;
+      }
     }
+    return got;
   }
+
+  const urgent = Math.min(Math.max(0, Math.trunc(urgentCount) || 0), need);
+  pick(urgent, true);          // 急件先搶最早的
+  pick(need - urgent, false);  // 其餘挑成效最好的時段
 
   return picked
     .sort((a, b) => a.getTime() - b.getTime())

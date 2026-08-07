@@ -142,3 +142,57 @@ test('planSchedule：horizonDays 到頂就少排，不會無限往後', () => {
   const out = planSchedule({ count: 100, dailyCap: 1, horizonDays: 3, now: NOON });
   assert.ok(out.length <= 3, `排了 ${out.length} 則，超過 3 天的上限`);
 });
+
+// ── 🔥 蹭熱度的要搶最早的時段 ──
+// 蹭熱搜的稿排到今晚 22 點的「黃金時段」也救不回來——熱搜幾小時就過期了。
+// 所以急件挑「最早」，其餘才挑「成效最好」。
+test('planSchedule：急件拿最早的時段，不是最好的時段', () => {
+  // 明說 22 點最好；早上 9 點在偏好裡很後面
+  const out = planSchedule({
+    count: 3, urgentCount: 1, bestHours: [22, 21, 20],
+    dailyCap: 15, now: new Date(2026, 7, 10, 8, 0),
+  });
+  const hrs = hoursOf(out);
+  assert.equal(hrs[0], 9, `急件應該排在最早可用的 9 點，實際 ${hrs[0]} 點`);
+  // 其餘兩則挑成效好的時段
+  assert.deepEqual(hrs.slice(1).sort((a, b) => a - b), [21, 22]);
+});
+
+test('planSchedule：urgentCount=0 時全部照最佳時段挑（維持原行為）', () => {
+  const out = planSchedule({
+    count: 2, bestHours: [22, 21], dailyCap: 15, now: new Date(2026, 7, 10, 8, 0),
+  });
+  assert.deepEqual(hoursOf(out).sort((a, b) => a - b), [21, 22]);
+});
+
+test('planSchedule：全部都是急件時，就是一路照時間往後排', () => {
+  const out = planSchedule({
+    count: 4, urgentCount: 4, bestHours: [22], minGapMinutes: 55,
+    now: new Date(2026, 7, 10, 8, 0),
+  });
+  // 要驗的是「由早往後連續排」，不是跳到偏好裡最好的 22 點
+  const hrs = hoursOf(out);
+  assert.equal(out.length, 4);
+  assert.ok(hrs[0] <= 10, `第一則應該接近現在，實際排在 ${hrs[0]} 點`);
+  assert.ok(hrs.every((h) => h < 14), `全急件不該有人被丟到晚上：${hrs.join(',')}`);
+});
+
+test('planSchedule：urgentCount 超過 count 不會多排', () => {
+  const out = planSchedule({ count: 2, urgentCount: 99, now: NOON });
+  assert.equal(out.length, 2);
+});
+
+test('planSchedule：急件也要守每日上限與間隔', () => {
+  const out = planSchedule({
+    count: 6, urgentCount: 6, dailyCap: 2, minGapMinutes: 55, now: NOON,
+  });
+  const perDay = new Map();
+  for (const iso of out) {
+    const k = localDateKey(new Date(iso));
+    perDay.set(k, (perDay.get(k) || 0) + 1);
+  }
+  for (const [d, n] of perDay) assert.ok(n <= 2, `${d} 排了 ${n} 則`);
+  for (let i = 1; i < out.length; i += 1) {
+    assert.ok(new Date(out[i]) - new Date(out[i - 1]) >= 55 * 60_000);
+  }
+});

@@ -182,3 +182,32 @@ test('scanCompliance：同一句不會因為規則重疊而重複報同一個詞
   const terms = hits.map((h) => h.term ?? h.matched ?? JSON.stringify(h));
   assert.equal(new Set(terms).size, terms.length, `重複命中：${JSON.stringify(hits)}`);
 });
+
+// ── 地獄梗尺度要同時涵蓋「黑」與「黃」──
+// hellish 原本只寫了黑色幽默，黃腔那條在 spicy 裡。從 spicy 換到 hellish
+// 反而會弄丟成人向的許可——這對深夜酒吧帳號是反效果。
+test('hellish：黑色幽默與成人向黃腔都要放行', async () => {
+  const { humorRules } = await import('../src/compliance.mjs');
+  const h = humorRules('hellish');
+  assert.match(h, /地獄梗全開/);
+  assert.match(h, /成人向的黃腔、雙關、色色的暗示一樣放行/);
+  assert.match(h, /太保守了/);
+  assert.match(h, /灰色地帶沒關係/);
+});
+
+test('hellish：曖昧勝過露骨的理由要講出來，不能只說不行', async () => {
+  const { humorRules } = await import('../src/compliance.mjs');
+  const h = humorRules('hellish');
+  // 理由一：Meta 社群守則跟台灣法規是兩套，露骨會被平台限流
+  assert.match(h, /Meta 社群守則/);
+  // 理由二：露骨本身就不好笑
+  assert.match(h, /露骨不好笑/);
+});
+
+test('hellish：會毀掉帳號的那幾條硬線一條都不能少', async () => {
+  const { humorRules } = await import('../src/compliance.mjs');
+  const h = humorRules('hellish');
+  for (const line of ['歧視', '災難', '未成年', '人身攻擊', '性騷擾']) {
+    assert.match(h, new RegExp(line), `缺少硬線：${line}`);
+  }
+});

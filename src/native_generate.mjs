@@ -138,6 +138,7 @@ export async function runGeneration({
     store.insertNativeDraft({
       draftText: d.text, angle: d.angle, sourceSummary,
       topic: d.topic, reviewNote: d.reviewNote, goal: d.goal,
+      timeSensitive: d.timeSensitive,
     })
   );
   const reviewed = drafts.filter((d) => d.reviewNote).length;
@@ -145,6 +146,7 @@ export async function runGeneration({
   // 8) 建議發文時間（🔴 只填時間，不核准——狀態維持 drafted，人還是要按核准）
   let scheduled = 0;
   let scheduleFallback = false;
+  let urgent = 0;
   if (brand.autoSchedule !== false && store.setNativeSuggestedTime) {
     const activeHours = brand.activeHours || DEFAULT_ACTIVE_HOURS;
     const hours = bestHours({
@@ -152,16 +154,23 @@ export async function runGeneration({
       minSamples: brand.bestTimeMinSamples ?? 10,
     });
     scheduleFallback = hours.fallback;
+    // 蹭熱度的排前面：planSchedule 會把最早的時段留給它們，而回傳的時間是
+    // 依序排好的，所以「急件排前面」直接對位就會拿到最早的那幾個。
+    const ordered = ids
+      .map((id, i) => ({ id, urgent: Boolean(drafts[i]?.timeSensitive) }))
+      .sort((a, b) => Number(b.urgent) - Number(a.urgent));
+    urgent = ordered.filter((o) => o.urgent).length;
     const times = planSchedule({
       count: ids.length,
       bestHours: hours.hours,
+      urgentCount: urgent,
       dailyCap: brand.dailyPublishCap ?? 15,
       minGapMinutes: brand.minGapMinutes ?? DEFAULT_MIN_GAP_MINUTES,
       activeHours,
       existing: store.listOccupiedSlots ? store.listOccupiedSlots() : [],
       now: new Date(nowIso),
     });
-    times.forEach((iso, i) => { store.setNativeSuggestedTime(ids[i], iso); });
+    times.forEach((iso, i) => { if (ordered[i]) store.setNativeSuggestedTime(ordered[i].id, iso); });
     scheduled = times.length;
     const when = times.length
       ? `${new Date(times[0]).toLocaleString('zh-TW')} 起`
@@ -170,6 +179,7 @@ export async function runGeneration({
     log(hours.fallback
       ? `   時段依預設值（自家樣本只有 ${hours.samples} 則，不足以算實測最佳時段）`
       : `   時段依自家實測（${hours.samples} 則貼文的數據）`);
+    if (urgent) log(`   其中 ${urgent} 則是蹭當下熱度的，已搶最早的時段（熱搜晚幾小時就過期了）`);
     log('   ⚠️ 這只是建議時間——狀態仍是「待審核」，你按核准之後才會照這個時間發。');
   }
 
@@ -184,6 +194,7 @@ export async function runGeneration({
     topicPool: topicPool.length, // 主題候選數（依聲量排序後餵給 AI 挑）
     scheduled, // 填了建議時間的則數（仍是待審核，不是已排定發布）
     scheduleFallback, // true = 時段用預設值，不是自家實測
+    urgent, // 其中幾則是蹭當下熱度、搶了最早時段的
     reviewed, // 被紅隊改寫過的則數
     insightsAvailable, // 有沒有讀到自家成效（false = token 缺 threads_manage_insights）
     topPosts: topPosts.length,

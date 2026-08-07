@@ -512,3 +512,40 @@ test('buildNativePrompt：產稿時就帶法規紅線（不能只靠紅隊事後
   assert.match(p, /菸酒管理法/);
   assert.match(p, /段子型/);
 });
+
+// ── 🔥 時效性 ──
+test('parseDrafts：AI 標的 timeSensitive 要收下來', async () => {
+  const { parseDrafts } = await import('../src/native_ai.mjs');
+  const out = parseDrafts(
+    '[{"text":"甲","timeSensitive":true},{"text":"乙","timeSensitive":false}]',
+    { goals: ['brand', 'brand'] }
+  );
+  assert.deepEqual(out.map((d) => d.timeSensitive), [true, false]);
+});
+
+test('parseDrafts：AI 沒標時，用分工當備援（reach 就是蹭當下熱搜）', async () => {
+  const { parseDrafts } = await import('../src/native_ai.mjs');
+  const out = parseDrafts('[{"text":"甲"},{"text":"乙"}]', { goals: ['reach', 'story'] });
+  assert.deepEqual(out.map((d) => d.timeSensitive), [true, false]);
+});
+
+test('parseDrafts：AI 明說 false 時不可以被 reach 的備援蓋掉', async () => {
+  const { parseDrafts } = await import('../src/native_ai.mjs');
+  // 模型比事後猜準——它知道自己寫的是熱搜還是常青
+  const out = parseDrafts('[{"text":"甲","timeSensitive":false}]', { goals: ['reach'] });
+  assert.equal(out[0].timeSensitive, false);
+});
+
+test('buildNativePrompt：要求標 timeSensitive，並解釋它的意思', async () => {
+  const { buildNativePrompt } = await import('../src/native_ai.mjs');
+  const p = buildNativePrompt({ persona: 'x', n: 3 });
+  assert.match(p, /timeSensitive/);
+  assert.match(p, /晚幾小時發就過期/);
+  assert.match(p, /全部標 true 等於沒標/); // 防模型偷懶全標 true
+});
+
+test('POST_GOALS.story：明講不要寫得太乾淨（照幽默尺度放開）', async () => {
+  const { POST_GOALS } = await import('../src/native_ai.mjs');
+  assert.match(POST_GOALS.story.brief, /段子最容易寫得太乾淨、太安全/);
+  assert.match(POST_GOALS.story.brief, /該黃就黃、該地獄就地獄/);
+});
