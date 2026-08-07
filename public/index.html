@@ -116,11 +116,14 @@
 
     <h3>指定貼文回覆</h3>
     <div class="card">
-      <div class="meta">貼上對方貼文的 <strong>media ID</strong>（純數字），寫好回覆 → 加入待審核，核准後才會送出。</div>
+      <div class="meta">貼上對方貼文的 <strong>media ID</strong>（純數字）。自己寫回覆，或按「🤖 幫我寫草稿」讓 AI 寫。<br>
+        兩種都一樣進待審核 —— <strong>核准後才會送出</strong>。</div>
       <div class="sched">
         <input class="topic" id="manualTargetId" placeholder="目標貼文 media ID（例：17912345678901234）" />
+        <button id="manualReplyDraft">🤖 幫我寫草稿</button>
       </div>
-      <textarea id="manualReplyText" maxlength="500" placeholder="想回覆的內容…"></textarea>
+      <textarea id="manualPostText" maxlength="1000" placeholder="（選填）那則貼文的內容。系統讀得到就不用填；讀不到時會請你貼進來"></textarea>
+      <textarea id="manualReplyText" maxlength="500" placeholder="想回覆的內容…（按「幫我寫草稿」會自動填這裡）"></textarea>
       <div class="count" id="manualReplyCount">0/500</div>
       <div class="actions">
         <button id="manualReplyAdd" class="primary">加入待審核</button>

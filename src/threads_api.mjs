@@ -86,6 +86,16 @@ export function createApi({ fetchImpl = fetch, base = DEFAULT_BASE, appSecret } 
       return request(fetchImpl, 'GET', `${graph}/${userId}/replies?${q}`);
     },
 
+    // 讀單一則貼文（含別人的）。用途：手動指定一則貼文要回覆時，
+    // 先把內文抓下來給 AI 產草稿——沒有內文就只能亂寫。
+    //
+    // ⚠️ 讀不讀得到別人的貼文取決於 App 的權限狀態（自家貼文與自家串裡的留言確定可以）。
+    // 讀不到時上層要 fail-open：改成請使用者自己貼內文，不能因此整條路走不通。
+    async getMedia({ accessToken, mediaId, fields = 'id,text,username,permalink,timestamp' }) {
+      const q = buildQuery(authed(accessToken, { fields }));
+      return request(fetchImpl, 'GET', `${graph}/${mediaId}?${q}`);
+    },
+
     // 官方發布額度用量：滾動 24 小時內已用掉幾則（官方硬上限 250）。
     // 需 threads_basic + threads_content_publish——發文本來就要這兩個，不會多要權限。
     async getPublishingLimit({ accessToken, userId, fields = 'quota_usage,config' }) {

@@ -576,6 +576,32 @@ manualReply.addEventListener('input', () => {
   c.textContent = `${n}/500`;
   c.style.color = n > 500 ? '#b3261e' : '#999';
 });
+// 🤖 幫我寫草稿：只給貼文 ID，AI 產回覆 → 直接進待審核。
+// 內文優先用你貼的；沒貼就試著讓系統自己讀那則貼文，讀不到會明講並請你貼。
+$('#manualReplyDraft').addEventListener('click', async () => {
+  const targetId = $('#manualTargetId').value.trim();
+  if (!targetId) { alert('請先填入目標貼文的 media ID'); return; }
+  const btn = $('#manualReplyDraft');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = '想回覆中…';
+  $('#mrstatus').textContent = '讀貼文 + AI 撰稿中…（可能數十秒）';
+  try {
+    const r = await api('/api/reply/manual-draft', {
+      method: 'POST',
+      body: JSON.stringify({ targetId, postText: $('#manualPostText').value.trim() }),
+    });
+    if (r.error) { $('#mrstatus').textContent = r.error; return; }
+    // 草稿已經進佇列了，同時填回框裡讓你當場看到／想改就改
+    manualReply.value = r.draft || '';
+    manualReply.dispatchEvent(new Event('input'));
+    if (r.postText && !$('#manualPostText').value.trim()) $('#manualPostText').value = r.postText;
+    $('#mrstatus').textContent = `已加入待審核 #${r.id}`
+      + (r.author ? `（回 @${r.author}）` : '')
+      + (r.source === 'api' ? '・貼文內容由系統讀取' : '・用你貼的內容')
+      + '。核准後才會送出。';
+    await loadQueue();
+  } finally { btn.disabled = false; btn.textContent = old; }
+});
+
 $('#manualReplyAdd').addEventListener('click', async () => {
   const targetId = $('#manualTargetId').value.trim();
   const text = manualReply.value.trim();
