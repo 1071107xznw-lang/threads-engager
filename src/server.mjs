@@ -694,6 +694,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           return publishText({ settings, accessToken, text, topic, api, dryRun: dryRunNow() });
         },
         dryRun: dryRunNow(),
+        // 積壓的排程一次到期時，照間隔滴出去，不要一個 tick 全部倒出去
+        minGapMinutes: currentBrand().minGapMinutes,
       }))
       .catch((e) => console.error('排程器錯誤：', e.message))
       .finally(() => { schedulerBusy = false; });

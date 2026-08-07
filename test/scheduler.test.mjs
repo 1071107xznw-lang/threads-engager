@@ -167,3 +167,107 @@ test('listOccupiedSlots：已排程的與已發布的都算佔用，略過的不
   ]);
   store.close();
 });
+
+// ── 🔴 積壓的排程不可以一次全倒出去 ──
+// 實際踩過：排程時間是「產稿當下」算的，核准卻是人晚上才按的。
+// 白天那些時間點全部變成已到期，一個 tick 就發了 6 則、間隔 0～1 分鐘。
+// 間隔只做在「排時間」那一層不夠，執行這一層也要守。
+function seedApprovedPast(store, n, minutesAgo = 60) {
+  const ids = [];
+  for (let i = 0; i < n; i += 1) {
+    const id = store.insertNativeDraft({ draftText: `稿${i}` });
+    store.setNativeSchedule(id, new Date(Date.now() - minutesAgo * 60_000).toISOString());
+    ids.push(id);
+  }
+  return ids;
+}
+
+test('🔴 積壓 6 則同時到期：一個 tick 只發 1 則，其餘遞延', async () => {
+  const store = createStore(':memory:');
+  seedApprovedPast(store, 6);
+  const sent = [];
+  const r = await publishDue({
+    store, publish: async ({ text }) => { sent.push(text); return { id: 'p' }; },
+    minGapMinutes: 55, log: () => {},
+  });
+  assert.equal(r.published, 1, '一個 tick 只能發 1 則');
+  assert.equal(r.deferred, 5);
+  assert.equal(sent.length, 1);
+  store.close();
+});
+
+test('🔴 距上一則發布不足間隔：整個 tick 跳過，一則都不發', async () => {
+  const store = createStore(':memory:');
+  // 先製造一則「10 分鐘前剛發過」的紀錄
+  const done = store.insertNativeDraft({ draftText: '剛發過的' });
+  store.setNativeStatus(done, 'approved');
+  store.claimNativeForPublish(done);
+  store.markNativePublished(done, 'p0', new Date(Date.now() - 10 * 60_000).toISOString());
+
+  seedApprovedPast(store, 3);
+  const sent = [];
+  const r = await publishDue({
+    store, publish: async ({ text }) => { sent.push(text); return { id: 'p' }; },
+    minGapMinutes: 55, log: () => {},
+  });
+  assert.equal(r.published, 0);
+  assert.equal(r.deferred, 3);
+  assert.deepEqual(sent, [], '間隔沒到就一則都不能送出去');
+  store.close();
+});
+
+test('距上一則發布已超過間隔：可以發，但仍然一次只發一則', async () => {
+  const store = createStore(':memory:');
+  const done = store.insertNativeDraft({ draftText: '很久以前發的' });
+  store.setNativeStatus(done, 'approved');
+  store.claimNativeForPublish(done);
+  store.markNativePublished(done, 'p0', new Date(Date.now() - 120 * 60_000).toISOString());
+
+  seedApprovedPast(store, 4);
+  const r = await publishDue({
+    store, publish: async () => ({ id: 'p' }), minGapMinutes: 55, log: () => {},
+  });
+  assert.equal(r.published, 1);
+  assert.equal(r.deferred, 3);
+  store.close();
+});
+
+test('minGapMinutes=0 維持舊行為（整批一次發完）', async () => {
+  const store = createStore(':memory:');
+  seedApprovedPast(store, 4);
+  const r = await publishDue({
+    store, publish: async () => ({ id: 'p' }), minGapMinutes: 0, log: () => {},
+  });
+  assert.equal(r.published, 4);
+  assert.equal(r.deferred, 0);
+  store.close();
+});
+
+test('間隔守門不影響 DRY_RUN（照樣不送、不改狀態）', async () => {
+  const store = createStore(':memory:');
+  seedApprovedPast(store, 3);
+  const sent = [];
+  const r = await publishDue({
+    store, publish: async () => { sent.push(1); return { id: 'p' }; },
+    dryRun: true, minGapMinutes: 55, log: () => {},
+  });
+  assert.equal(r.published, 0);
+  assert.equal(r.skipped, 3);
+  assert.deepEqual(sent, []);
+  store.close();
+});
+
+test('lastPublishedAt：回最後一次真的發出去的時間，沒發過回 null', () => {
+  const store = createStore(':memory:');
+  assert.equal(store.lastPublishedAt(), null);
+  const a = store.insertNativeDraft({ draftText: 'a' });
+  store.setNativeStatus(a, 'approved');
+  store.claimNativeForPublish(a);
+  store.markNativePublished(a, 'p1', '2026-08-07T09:00:00.000Z');
+  const b = store.insertNativeDraft({ draftText: 'b' });
+  store.setNativeStatus(b, 'approved');
+  store.claimNativeForPublish(b);
+  store.markNativePublished(b, 'p2', '2026-08-07T11:00:00.000Z');
+  assert.equal(store.lastPublishedAt(), '2026-08-07T11:00:00.000Z');
+  store.close();
+});

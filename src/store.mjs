@@ -256,6 +256,14 @@ export function createStore(dbPath) {
     setNativeSuggestedTime(id, scheduledAt) {
       db.prepare('UPDATE native_drafts SET scheduledAt=? WHERE id=?').run(scheduledAt, id);
     },
+    // 最後一次真的發出去是什麼時候。排程器用它守最小間隔——
+    // 積壓的排程同時到期時，不可以一個 tick 全部倒出去。
+    lastPublishedAt() {
+      const r = db.prepare(
+        "SELECT publishedAt FROM native_drafts WHERE status='published' AND publishedAt IS NOT NULL ORDER BY publishedAt DESC LIMIT 1"
+      ).get();
+      return r ? r.publishedAt : null;
+    },
     // 已被佔用的時段：已排程的（不分待審/已核准）+ 已發布的。
     // 自動排程用它避開撞車、並算出某一天已經用掉幾則額度。
     listOccupiedSlots() {
