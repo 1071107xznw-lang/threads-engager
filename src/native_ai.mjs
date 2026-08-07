@@ -68,6 +68,9 @@ export const POST_GOALS = {
       + '⚠️ **不准硬把結尾轉回酒、轉回店**。硬轉比不轉還糟：一被看出是廣告就沒人轉了。'
       + '一則完全沒提到酒的段子，照樣是這個帳號的段子。'
       + '**懂的人會多笑一層，不懂的人也看得懂**——這個雙層才是被瘋傳的關鍵。'
+      + '⚠️ **段子最容易寫得太乾淨、太安全，那就等於沒寫**。'
+      + '照上面的幽默尺度放開來：該黃就黃、該地獄就地獄、該賤就賤。'
+      + '一則沒有人敢轉的段子跟一則沒人看的公告一樣沒用。'
       + '講完就停，**絕對不要解釋笑點**，不要補「是不是很好笑」這種話。'
       + '**一個字都不要提自己的店**，沒有 hashtag、沒有 CTA、沒有地址——'
       + '零品牌提及正是它會被轉發的原因，加了就沒人轉了。',
@@ -273,9 +276,17 @@ export function buildNativePrompt({
     lines.push('  清單裡沒有貼切的，才自己想一個——**主題不貼內容比沒有主題還糟**。');
   }
   lines.push('');
+  // 時效性決定排程要排在哪：蹭熱搜的晚幾小時發就沒人在乎了，
+  // 常青的可以等到當天流量最好的時段。模型比事後用關鍵字猜準得多。
+  lines.push('- 每則標一個 `timeSensitive`（true/false）：');
+  lines.push('  **true** ＝ 蹭當下熱搜/新聞/今天發生的事，晚幾小時發就過期；');
+  lines.push('  **false** ＝ 常青內容，下週發也一樣成立。');
+  lines.push('  誠實標。全部標 true 等於沒標，排程會失去意義。');
+  lines.push('');
   lines.push(
     `只輸出一個 JSON 陣列，長度 ${n}，格式：`
-    + '[{"text":"貼文內容","angle":"切入點","topic":"主題","goal":"reach/engage/brand/share/story"}]，不要其他文字。'
+    + '[{"text":"貼文內容","angle":"切入點","topic":"主題",'
+    + '"goal":"reach/engage/brand/share/story","timeSensitive":true/false}]，不要其他文字。'
   );
   return lines.join('\n');
 }
@@ -294,14 +305,19 @@ export function parseDrafts(raw, { maxLen = 500, goals = [] } = {}) {
     const text = item.text.trim();
     if (!text || [...text].length > maxLen) return;
     const echoed = typeof item.goal === 'string' ? item.goal.trim().toLowerCase() : '';
+    const goal = goals[i] || ((echoed in POST_GOALS) ? echoed : null);
     out.push({
       text,
       angle: typeof item.angle === 'string' ? item.angle.trim() : null,
       topic: sanitizeTopic(item.topic), // AI 建議的主題（整理過；無效則 null）
+      // 時效性：模型沒標時，用分工當備援——reach 的定義就是蹭當下熱搜。
+      timeSensitive: typeof item.timeSensitive === 'boolean'
+        ? item.timeSensitive
+        : goal === 'reach',
       // 分工以**我們指派的**為準。AI 回填只在沒有指派時當備援——
       // 反過來的話，模型隨口回一個別的目標就會蓋掉配比，goalMix 的輪替保證會失效
       // （實際踩過：指派 story、模型回填 share，徽章標錯、輪替也算錯）。
-      goal: goals[i] || ((echoed in POST_GOALS) ? echoed : null),
+      goal,
     });
   });
   if (!out.length) throw new Error('AI 未產出有效草稿');

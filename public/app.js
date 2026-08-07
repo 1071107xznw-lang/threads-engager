@@ -125,7 +125,8 @@ $('#dryrun').addEventListener('click', async () => {
 function draftMetaHtml(d) {
   return `
         ${d.angle ? `<span class="angle">${esc(d.angle)}</span> ・ ` : ''}
-        <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>${goalBadge(d.goal)}
+        <span>#${d.id} ・ 素材：${esc(d.sourceSummary || '')}</span>${goalBadge(d.goal)}${
+          d.timeSensitive ? '<span class="urgent" title="蹭當下熱度：排程會搶最早的時段，晚幾小時就過期了">🔥 時效</span>' : ''}
         ${d.reviewNote ? `<div class="review">🛡 已改寫可能被抓語病的說法：${esc(d.reviewNote)}</div>` : ''}
         ${d.compliance ? `<div class="legal">⚖️ 法規風險，核准前請確認：${esc(d.compliance)}</div>` : ''}`;
 }
