@@ -731,3 +731,83 @@ test('全部排程：超過 500 字的那則要跳過，不能把超長內容排
   assert.equal(store.getNativeDraft(id).status, 'drafted', '沒排成功就不該改狀態');
   store.close();
 });
+
+// ── 🤖 指定貼文 → AI 產回覆草稿 ──
+function targetDraftApp({ draftForTarget } = {}) {
+  const store = createStore(':memory:');
+  const app = createServer({
+    store,
+    setupComplete: true,
+    accounts: [{ name: 'me' }],
+    draftForTarget: draftForTarget || (async ({ targetId, postText }) => {
+      const { id } = store.upsertPost({
+        account: 'me', threadUrl: `https://www.threads.com/t/${targetId}`,
+        author: 'someone', content: postText || 'API 讀到的', targetId,
+      });
+      store.saveDraft(id, 'AI 寫的草稿');
+      return { ok: true, id, targetId, draft: 'AI 寫的草稿', score: 0.9, source: postText ? 'manual' : 'api' };
+    }),
+  });
+  return { store, app };
+}
+
+test('指定貼文產草稿：進待審核佇列', async () => {
+  const { app, store } = targetDraftApp();
+  const res = await request(app).post('/api/reply/manual-draft').send({ targetId: '17912345678901234' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.draft, 'AI 寫的草稿');
+  assert.equal(store.getPost(res.body.id).status, 'drafted');
+  store.close();
+});
+
+test('🔴 指定貼文產草稿：絕對不可以順便送出', async () => {
+  // 這是規則 1 的界線。產草稿是全自動的，送出永遠要人按。
+  const { app, store } = targetDraftApp();
+  const res = await request(app).post('/api/reply/manual-draft').send({ targetId: '1' });
+  const row = store.getPost(res.body.id);
+  assert.equal(row.status, 'drafted');
+  assert.equal(row.sentAt, null, '不可以有送出時間');
+  assert.equal(store.listByStatus('me', 'sent').length, 0);
+  store.close();
+});
+
+test('指定貼文產草稿：可以自己貼貼文內容（API 讀不到時的退路）', async () => {
+  const { app, store } = targetDraftApp();
+  const res = await request(app).post('/api/reply/manual-draft')
+    .send({ targetId: '1', postText: '我自己貼的' });
+  assert.equal(res.body.source, 'manual');
+  assert.equal(store.getPost(res.body.id).content, '我自己貼的');
+  store.close();
+});
+
+test('指定貼文產草稿：網址要擋掉並說清楚（短碼不能當 reply_to_id）', async () => {
+  const { app, store } = targetDraftApp();
+  const res = await request(app).post('/api/reply/manual-draft')
+    .send({ targetId: 'https://www.threads.com/@someone/post/DbulzgknZZ7' });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /media ID/);
+  store.close();
+});
+
+test('指定貼文產草稿：已經回覆並送出過的擋掉，不重複回覆', async () => {
+  const { app, store } = targetDraftApp();
+  const { id } = store.upsertPost({ account: 'me', threadUrl: 'u', targetId: '555' });
+  store.markSent(id, new Date().toISOString());
+  const res = await request(app).post('/api/reply/manual-draft').send({ targetId: '555' });
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /已經回覆並送出過/);
+  store.close();
+});
+
+test('指定貼文產草稿：讀不到內文時，錯誤訊息要告訴使用者怎麼繼續', async () => {
+  const { app, store } = targetDraftApp({
+    draftForTarget: async () => {
+      const e = new Error('讀不到這則貼文的內容。請把貼文內容複製貼到「貼文內容」欄位，我再幫你寫。');
+      e.status = 422; throw e;
+    },
+  });
+  const res = await request(app).post('/api/reply/manual-draft').send({ targetId: '1' });
+  assert.equal(res.status, 422);
+  assert.match(res.body.error, /複製貼到/);
+  store.close();
+});

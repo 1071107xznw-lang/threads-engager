@@ -24,6 +24,8 @@ import { scanCompliance, summarizeCompliance } from './compliance.mjs';
 import { loadKnowledge, resolveKnowledgePath } from './knowledge.mjs';
 import { isClaudeAvailable, scoreAndDraft } from './ai.mjs';
 import { findAndDraft } from './reply_pipeline.mjs';
+import { draftReplyForTarget } from './target_draft.mjs';
+import { fetchVoiceSamples } from './voice.mjs';
 import { sendApprovedReplies, validateReply, parseTargetId } from './threads_reply.mjs';
 import { publishDue } from './scheduler.mjs';
 import { mountSetupRoutes } from './setup.mjs';
@@ -188,6 +190,7 @@ export function createServer({
   password, // 選用：設了就用 Basic Auth 保護整個 dashboard
   runScrape,
   runInboxScan, // 掃自己貼文底下未回覆的留言 → 產草稿
+  draftForTarget, // 🤖 為指定的一則貼文產回覆草稿：({ targetId, postText }) => Promise<...>
   regenerateReply, // 🔄 重新生成某則回覆草稿（換個角度）
   runSend,
   runGenerate,
@@ -311,6 +314,23 @@ export function createServer({
         res.json({ ok: true, id, targetId, updated: Boolean(existing) });
       } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
     });
+    // 🤖 手動指定一則貼文 → **AI 幫你寫草稿** → 進審核佇列。
+    //
+    // 跟 /api/reply/manual 的差別只在「草稿誰寫的」：那條是你自己寫，這條是 AI 寫。
+    // **送出路徑完全沒變**——一樣只有 /api/send 會送，而它只送 approved（規則 1）。
+    if (draftForTarget) {
+      app.post('/api/reply/manual-draft', wrap(async (req) => {
+        const targetId = parseTargetId(req.body?.targetId);
+        const postText = String(req.body?.postText ?? '').trim();
+        // 已經回過並送出的不重複回覆（跟 /api/reply/manual 同一條守則）
+        const existing = store.findByTargetId(accountName, targetId);
+        if (existing && existing.status === 'sent') {
+          const e = new Error(`這則貼文已經回覆並送出過了（#${existing.id}），不重複回覆`);
+          e.status = 409; throw e;
+        }
+        return draftForTarget({ targetId, postText });
+      }));
+    }
     app.post('/api/posts/:id/skip', (req, res) => {
       store.setStatus(Number(req.params.id), 'skipped');
       res.json({ ok: true });
@@ -553,6 +573,22 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       return scanInbox({
         api, accessToken, userId: settings.userId, store, account: ACCOUNT, brand,
         knowledge: loadKnowledge(configDir ? resolveKnowledgePath(configDir, existsSync) : null),
+      });
+    },
+    // 🤖 指定一則貼文，AI 幫忙寫回覆草稿（只到草稿，送出仍要人核准）
+    draftForTarget: async ({ targetId, postText }) => {
+      const { settings, api, accessToken } = currentAuth();
+      const brand = currentBrand();
+      // 語氣樣本走跟主動回覆同一套：拿自己回過別人的留言當範本
+      const voiceSamples = brand.useOwnReplies === false ? [] : await fetchVoiceSamples({
+        api, accessToken, userId: settings.userId, limit: brand.ownReplySamples,
+      });
+      return draftReplyForTarget({
+        api, accessToken, store, account: ACCOUNT,
+        targetId, postText,
+        persona: brand.replyPersona,
+        threshold: 0, // 手動指定＝人已經挑過這則了，不再用分數擋
+        voiceSamples,
       });
     },
     regenerateReply: async (id) => {

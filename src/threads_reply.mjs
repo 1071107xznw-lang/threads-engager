@@ -41,18 +41,26 @@ export function pickSendable({
 
 // 解析手動輸入的目標貼文 ID。reply_to_id 要的是貼文的 media ID（數字字串），
 // 不是貼文網址——網址裡的短碼無法直接當 reply_to_id，所以貼網址時給明確指引。
+// 使用者輸入的驗證錯誤一律標 400。沒標的話，走 wrap() 的端點會回 500——
+// 而「貼了網址而不是 media ID」是最常見的手滑，不該長得像伺服器壞掉。
+function badRequest(message) {
+  const e = new Error(message);
+  e.status = 400;
+  return e;
+}
+
 export function parseTargetId(input) {
   const s = String(input ?? '').trim();
-  if (!s) throw new Error('請填入目標貼文的 media ID');
+  if (!s) throw badRequest('請填入目標貼文的 media ID');
   if (/^https?:\/\//i.test(s) || s.includes('threads.com/') || s.includes('threads.net/')) {
-    throw new Error('請填入貼文的 media ID（純數字），不是貼文網址；網址短碼無法當 reply_to_id');
+    throw badRequest('請填入貼文的 media ID（純數字），不是貼文網址；網址短碼無法當 reply_to_id');
   }
   return s;
 }
 
 export function validateReply(text) {
-  if (typeof text !== 'string' || text.trim().length === 0) throw new Error('回覆內容不可為空');
-  if ([...text].length > MAX_TEXT_LEN) throw new Error(`回覆超過 ${MAX_TEXT_LEN} 字上限`);
+  if (typeof text !== 'string' || text.trim().length === 0) throw badRequest('回覆內容不可為空');
+  if ([...text].length > MAX_TEXT_LEN) throw badRequest(`回覆超過 ${MAX_TEXT_LEN} 字上限`);
   return text;
 }
 
